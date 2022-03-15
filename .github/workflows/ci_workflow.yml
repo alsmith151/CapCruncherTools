@@ -39,7 +39,8 @@ jobs:
       shell: bash -l {0}
       run: |
         pip install maturin
-        maturin develop
+        maturin build
+        python -m pip install --force-reinstall --no-index --find-links target/wheels .
 
     - name: Test with pytest and generate report
       shell: bash -l {0}
