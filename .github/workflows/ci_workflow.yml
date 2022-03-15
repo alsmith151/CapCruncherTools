@@ -38,6 +38,7 @@ jobs:
     - name: Install the package
       shell: bash -l {0}
       run: |
+        pip install maturin
         maturin develop
 
     - name: Test with pytest and generate report
