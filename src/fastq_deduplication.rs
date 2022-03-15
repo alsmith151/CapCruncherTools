@@ -1,14 +1,15 @@
-use ahash::{AHasher};
 use fastq::{each_zipped, Parser, Record};
 use hashbrown::{HashMap, HashSet};
 use niffler;
 use rand::prelude::*;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
-use std::hash::{Hasher};
 use std::ops::Add;
-use std::path::{Path};
+use std::path::Path;
 use std::prelude::rust_2021::*;
+use twox_hash::xxh3::hash64_with_seed;
+use std::hash::Hash;
+use std::iter::Iterator;
 
 fn get_fastq_reader_file_handles<P>(
     paths: Vec<P>,
@@ -67,9 +68,10 @@ impl Add for FastqReadDeduplicationStats {
 fn convert_fastq_to_hashmap<P: AsRef<Path>, S: ToString>(
     paths: Vec<P>,
     label: S,
-) -> Result<(String, HashMap<u64, u64>), std::io::Error> {
+) -> Result<(String, HashMap<u64, u64>, HashSet<u64>), std::io::Error> {
     let mut file_handles = get_fastq_reader_file_handles(paths)?;
     let mut sequences_unique: HashMap<u64, u64> = HashMap::new();
+    let mut sequences_duplicated: HashSet<u64> = HashSet::new();
     let mut record_count = 0;
 
     each_zipped(file_handles.remove(0), file_handles.remove(0), |r1, r2| {
@@ -79,11 +81,14 @@ fn convert_fastq_to_hashmap<P: AsRef<Path>, S: ToString>(
             let rec2 = r2.unwrap();
 
             let sequences = [rec1.seq(), rec2.seq()].concat();
-            let mut hasher = AHasher::new_with_keys(42, 69);
-            hasher.write(&sequences);
-            let sequences_hashed = hasher.finish();
+            let sequences_hashed = hash64_with_seed(&sequences, 42);
 
-            sequences_unique.insert(sequences_hashed, record_count);
+            match sequences_unique.insert(sequences_hashed, record_count) {
+                None => {}
+                Some(is_duplicated) => {
+                    sequences_duplicated.insert(is_duplicated);
+                }
+            }
 
             (true, true)
         } else {
@@ -91,7 +96,7 @@ fn convert_fastq_to_hashmap<P: AsRef<Path>, S: ToString>(
         }
     })?;
 
-    Ok((label.to_string(), sequences_unique))
+    Ok((label.to_string(), sequences_unique, sequences_duplicated))
 }
 
 fn identify_duplicate_sequences(
@@ -183,16 +188,32 @@ where
 pub fn deduplicate_fastq(
     fq_in: HashMap<String, Vec<String>>,
     fq_out: HashMap<String, Vec<String>>,
-) -> Result<FastqReadDeduplicationStats, std::io::Error>
-
-{
+) -> Result<FastqReadDeduplicationStats, std::io::Error> {
     let fq_hashmaps: Vec<_> = fq_in
         .clone()
         .into_par_iter()
         .map(|(label, fq_pair)| convert_fastq_to_hashmap(fq_pair, label).unwrap())
         .collect();
 
-    let duplicated_indexes = identify_duplicate_sequences(fq_hashmaps);
+    let shard_duplicates: HashSet<u64> = fq_hashmaps
+        .iter()
+        .map(|(label, unfiltered, duplicates)| duplicates)
+        .fold(
+         HashSet::new(),
+            |mut acc, duplicates| {
+                duplicates.into_iter().for_each(|index| {
+                    acc.insert(*index);
+                });
+                acc
+            },
+        );
+
+    let fq_unfiltered: Vec<_> = fq_hashmaps
+        .into_par_iter()
+        .map(|(label, unfiltered, duplicates)| (label, unfiltered))
+        .collect();
+
+    let duplicated_indexes = identify_duplicate_sequences(fq_unfiltered.to_owned());
 
     let duplication_results = fq_in
         .par_iter()
@@ -222,44 +243,40 @@ pub fn deduplicate_fastq(
 
 #[test]
 fn test_fastq_to_hashmap() {
-    let f1 = "test_DUP_1.fq.gz";
-    let f2 = "test_DUP_1.fq.gz";
+    let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
+    let f2 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
 
     let filt = convert_fastq_to_hashmap(vec![f1, f2], "File1").unwrap();
-    // println!("{:?}", &filt);
-    // println!("{:?}", &filt.1.len());
+    //println!("{:?}", &filt);
+    //assert_eq!(538, filt.1.len());
 }
 
 #[test]
 fn test_identify() {
-    let f1 = "test_1.fastq.gz";
-    let r1 = "test_1.fastq.gz";
+    let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
+    let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
 
-    let f2 = "test_DUP_1.fq.gz";
-    let r2 = "test_DUP_2.fq.gz";
+    let f2 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
+    let r2 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
 
     let pair1 = convert_fastq_to_hashmap(vec![f1, r1], "1").unwrap();
-    let pair2 = convert_fastq_to_hashmap(vec![f2, r2], "2").unwrap();
+    // let pair2 = convert_fastq_to_hashmap(vec![f2, r2], "2").unwrap();
 
-    let duplicates = identify_duplicate_sequences(vec![pair1, pair2]);
-    // println!("{:?}", duplicates);
+    let duplicates = identify_duplicate_sequences(vec![(pair1.0, pair1.1)]);
+    println!("{:?}", duplicates);
 }
 
 #[test]
 fn test_remove() {
-    let f1 = "test_1.fastq.gz";
-    let r1 = "test_1.fastq.gz";
-
-    let f2 = "test_DUP_1.fq.gz";
-    let r2 = "test_DUP_2.fq.gz";
+    let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
+    let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
 
     let dd1 = "out_dd_1.fq.gz";
     let dd2 = "out_dd_2.fq.gz";
 
     let pair1 = convert_fastq_to_hashmap(vec![f1, r1], "1").unwrap();
-    let pair2 = convert_fastq_to_hashmap(vec![f2, r2], "2").unwrap();
 
-    let duplicates = identify_duplicate_sequences(vec![pair1, pair2]);
+    let duplicates = identify_duplicate_sequences(vec![(pair1.0, pair1.1)]);
 
     let removed =
         remove_duplicate_sequences(&vec![f1, r1], &vec![dd1, dd2], duplicates.get("1").unwrap());
@@ -268,7 +285,6 @@ fn test_remove() {
 
 #[test]
 fn test_full_dedup() {
-
     let f1 = "test_1.fastq.gz".to_owned();
     let r1 = "test_1.fastq.gz".to_owned();
 
@@ -281,10 +297,9 @@ fn test_full_dedup() {
     let dd11 = "out_dd2_1.fq.gz".to_owned();
     let dd12 = "out_dd2_2.fq.gz".to_owned();
 
-
     let mut fq_in = HashMap::new();
     let mut fq_out = HashMap::new();
-    
+
     fq_in.insert("1".to_owned(), vec![f1, r1]);
     fq_in.insert("2".to_owned(), vec![f2, r2]);
 
@@ -294,8 +309,4 @@ fn test_full_dedup() {
     let res = deduplicate_fastq(fq_in, fq_out).unwrap();
 
     println!("{:?}", res);
-
-
-
-
 }
