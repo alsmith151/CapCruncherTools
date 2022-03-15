@@ -1,5 +1,5 @@
 use hashbrown::HashMap;
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::prelude::*;
 use pythonize::pythonize;
 
 mod fastq_deduplication;
