@@ -38,9 +38,10 @@ jobs:
     - name: Install the package
       shell: bash -l {0}
       run: |
+        python -m venv .env
+        source .env/bin/activate
         pip install maturin
-        maturin build
-        python -m pip install --force-reinstall --no-index --find-links target/wheels .
+        maturin develop
 
     - name: Test with pytest and generate report
       shell: bash -l {0}
