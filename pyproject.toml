@@ -1,14 +1,14 @@
 [project]
 authors = [{name = "asmith"}, {email = "alastair.smith@ndcls.ox.ac.uk"}]
-dependencies = ["click", "toml>=0.10.0",] #"pandas"]
+dependencies = ["click", "toml>=0.10.0", "pandas"]
 name = "capcruncher_tools"
 version = "0.1.0"
-description = "Faster utilities to speed up CapCruncher"
+description = "Extra utilities to enhance CapCruncher"
 license = {file = "LICENSE"}
 
 [build-system]
 build-backend = "maturin"
-requires = ["maturin>=0.12,<0.13", "setuptools"]
+requires = ["maturin>=0.12.11", "setuptools"]
 
 [package.metadata.maturin]
 python-source = "capcruncher_tools"
