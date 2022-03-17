@@ -11,12 +11,12 @@ fastq = "0.6.0"
 hashbrown = {version = "0.11", features = ["rayon"]}
 rayon = "*"
 rand = "0.8.5"
-pyo3 = { version = "*", features = ["extension-module", "serde", "hashbrown"] }
+pyo3 = { version = "0.16.*", features = ["extension-module", "serde", "hashbrown"] }
 pythonize = "*"
 serde = { version = "1.*", features = ["derive"] }
 twox-hash = "1.6.2"
 tempfile = "3.3.0"
-pyo3-log = "*"
+pyo3-log = "0.6.*"
 log = "*"
 ctrlc = "*"
 
