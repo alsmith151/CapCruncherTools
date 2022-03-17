@@ -30,17 +30,13 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Install the package and testing dependencies
+    - name: Compile the package and test
       shell: bash -l {0}
       run: |
         python -m venv .env
         source .env/bin/activate
         pip install maturin pytest pytest-cov
         maturin develop
-
-    - name: Test with pytest and generate report
-      shell: bash -l {0}
-      run: |
         pytest -vv -s --log-cli-level debug --cov=./ --cov-report=xml
 
     - name: Upload Coverage to Codecov
