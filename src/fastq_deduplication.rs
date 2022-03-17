@@ -12,6 +12,7 @@ use std::prelude::rust_2021::*;
 use tempfile::tempdir;
 use twox_hash::xxh3::hash64_with_seed;
 
+
 fn get_fastq_reader_file_handles<P>(
     paths: Vec<P>,
 ) -> Result<Vec<Parser<Box<dyn std::io::Read>>>, std::io::Error>
@@ -81,7 +82,7 @@ fn convert_fastq_to_hashmap<P: AsRef<Path>, S: ToString>(
 
             match record_count % 100000 {
                 0 => {
-                    info!("Read and processed {} records", record_count)
+                    //info!("Read and processed {} records", record_count)
                 }
                 _ => {}
             }
@@ -181,7 +182,7 @@ where
         |r1, r2| {
             match n_records_processed % 100000 {
                 0 => {
-                    info!("Written {} records", n_records_processed)
+                    //info!("Written {} records", n_records_processed)
                 }
                 _ => {}
             }
@@ -217,11 +218,19 @@ pub fn deduplicate_fastq(
         false => niffler::Format::No,
     };
 
+    // Ensure that rayon does not go crazy with the number of cores
+    rayon::ThreadPoolBuilder::new().num_threads(12).build_global().unwrap();
+
+
+
+    debug!("Started shard based deduplication");
+
     let fq_hashmaps: Vec<_> = fq_in
         .clone()
         .into_par_iter()
         .map(|(label, fq_pair)| convert_fastq_to_hashmap(fq_pair, label).unwrap())
         .collect();
+
 
     let (shard_unique_seq, shard_dup_index) = fq_hashmaps.into_iter().fold(
         (HashMap::new(), HashMap::new()),
@@ -232,8 +241,10 @@ pub fn deduplicate_fastq(
         },
     );
 
+    debug!("Identifying duplicates accross all shards");
     let collated_duplicated_indexes = identify_duplicate_sequences(shard_unique_seq, shuffle);
 
+    debug!("Removing duplicates accross all shards");
     let duplication_results = fq_in
         .par_iter()
         .filter_map(|(label, fq_files)| {
