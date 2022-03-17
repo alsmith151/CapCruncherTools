@@ -1,6 +1,6 @@
 [project]
 authors = [{name = "asmith"}, {email = "alastair.smith@ndcls.ox.ac.uk"}]
-dependencies = ["click", "toml>=0.10.0"]
+dependencies = ["click", "toml>=0.10.0",] #"pandas"]
 name = "capcruncher_tools"
 version = "0.1.0"
 description = "Faster utilities to speed up CapCruncher"

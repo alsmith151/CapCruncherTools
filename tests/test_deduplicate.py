@@ -32,12 +32,3 @@ def test_fastq_duplicate_removal(
 
     result = click.testing.CliRunner().invoke(cli, ["fastq-deduplicate", infiles_paths[0], infiles_paths[1], "-o", out_prefix])
     assert result.exit_code == 0
-    
-
-    # assert stats.at["reads_removed", "stat"] == n_duplicates_expected
-
-    # outfiles = glob.glob(f"{out_prefix}*")
-    # assert len(outfiles) == len(infiles)
-
-    # assert (
-    #     len([r for r in pysam.FastxFile(outfiles[0])]) == stats.at["reads_unique", "stat"])

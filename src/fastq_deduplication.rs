@@ -1,15 +1,17 @@
+use log::{info, debug, warn};
 use fastq::{each_zipped, Parser, Record};
 use hashbrown::{HashMap, HashSet};
 use niffler;
 use rand::prelude::*;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use std::iter::Iterator;
 use std::ops::Add;
 use std::path::Path;
 use std::prelude::rust_2021::*;
+use tempfile::tempdir;
 use twox_hash::xxh3::hash64_with_seed;
-use std::hash::Hash;
-use std::iter::Iterator;
+
 
 fn get_fastq_reader_file_handles<P>(
     paths: Vec<P>,
@@ -77,6 +79,13 @@ fn convert_fastq_to_hashmap<P: AsRef<Path>, S: ToString>(
     each_zipped(file_handles.remove(0), file_handles.remove(0), |r1, r2| {
         if r1.is_some() & r2.is_some() {
             record_count += 1;
+
+            match record_count % 100000 {
+                0 => {info!("Read and processed {} records", record_count)},
+                _ => {}
+                
+            }            
+
             let rec1 = r1.unwrap();
             let rec2 = r2.unwrap();
 
@@ -100,29 +109,36 @@ fn convert_fastq_to_hashmap<P: AsRef<Path>, S: ToString>(
 }
 
 fn identify_duplicate_sequences(
-    sequences: Vec<(String, HashMap<u64, u64>)>,
+    sequences: HashMap<String, HashMap<u64, u64>>,
+    shuffle: bool,
 ) -> HashMap<String, HashSet<u64>> {
     let mut sequences_unique = HashSet::new();
     let mut records_duplicated: HashMap<String, HashSet<u64>> =
         HashMap::with_capacity(sequences.len());
 
     //Random permutations to stop the same sequences being removed
-    let mut sequences_to_dedup = sequences.clone();
-    let mut rng = thread_rng();
-    sequences_to_dedup.shuffle(&mut rng);
+    let keys: Vec<_> = match shuffle {
+        false => sequences.keys().collect(),
+        true => {
+            let mut rng = thread_rng();
+            let mut keys: Vec<_> = sequences.keys().collect();
+            keys.shuffle(&mut rng);
+            keys
+        }
+    };
 
-    for (label, sequences_hashed_map) in sequences_to_dedup {
+    for key in keys {
         let mut duplicated = HashSet::new();
 
-        for (sequence_hashed, record_number) in sequences_hashed_map {
+        for (sequence_hashed, record_number) in sequences.get(key).unwrap() {
             match sequences_unique.insert(sequence_hashed) {
                 true => {}
                 false => {
-                    duplicated.insert(record_number);
+                    duplicated.insert(record_number.clone());
                 }
             }
         }
-        records_duplicated.insert(label.to_string(), duplicated);
+        records_duplicated.insert(key.to_string(), duplicated);
     }
 
     records_duplicated
@@ -157,14 +173,20 @@ where
     let mut fq_reader_handles = get_fastq_reader_file_handles(paths_in.to_vec())?;
     let mut fq_writer_handles = get_fastq_writer_file_handles(
         paths_out.to_vec(),
-        niffler::Format::Gzip,
-        niffler::Level::Five,
+        niffler::Format::No,
+        niffler::Level::One,
     )?;
 
     each_zipped(
         fq_reader_handles.remove(0),
         fq_reader_handles.remove(0),
         |r1, r2| {
+
+            match n_records_processed % 100000 {
+                0 => {info!("Written {} records", n_records_processed)},
+                _ => {}
+                
+            }      
             let continue_reading = match (r1, r2) {
                 (Some(rec1), Some(rec2)) => match n_records_processed {
                     n if duplicate_indexes.contains(&n) => (true, true),
@@ -188,6 +210,7 @@ where
 pub fn deduplicate_fastq(
     fq_in: HashMap<String, Vec<String>>,
     fq_out: HashMap<String, Vec<String>>,
+    shuffle: bool,
 ) -> Result<FastqReadDeduplicationStats, std::io::Error> {
     let fq_hashmaps: Vec<_> = fq_in
         .clone()
@@ -195,35 +218,28 @@ pub fn deduplicate_fastq(
         .map(|(label, fq_pair)| convert_fastq_to_hashmap(fq_pair, label).unwrap())
         .collect();
 
-    let shard_duplicates: HashSet<u64> = fq_hashmaps
-        .iter()
-        .map(|(label, unfiltered, duplicates)| duplicates)
-        .fold(
-         HashSet::new(),
-            |mut acc, duplicates| {
-                duplicates.into_iter().for_each(|index| {
-                    acc.insert(*index);
-                });
-                acc
-            },
-        );
+    let (shard_unique_seq, shard_dup_index) = fq_hashmaps.into_iter().fold(
+        (HashMap::new(), HashMap::new()),
+        |(mut shard_sequences, mut shard_duplicates), (label, seq, dup)| {
+            shard_sequences.insert(label.clone(), seq);
+            shard_duplicates.insert(label, dup);
+            (shard_sequences, shard_duplicates)
+        },
+    );
 
-    let fq_unfiltered: Vec<_> = fq_hashmaps
-        .into_par_iter()
-        .map(|(label, unfiltered, duplicates)| (label, unfiltered))
-        .collect();
-
-    let duplicated_indexes = identify_duplicate_sequences(fq_unfiltered.to_owned());
+    let collated_duplicated_indexes = identify_duplicate_sequences(shard_unique_seq, shuffle);
 
     let duplication_results = fq_in
         .par_iter()
         .filter_map(|(label, fq_files)| {
-            let duplicate_indexes_sample_specific = duplicated_indexes.get(label).unwrap();
+            let mut duplicated_indexes_by_shard =
+                collated_duplicated_indexes.get(label).unwrap().to_owned();
+            duplicated_indexes_by_shard.extend(shard_dup_index.get(label).unwrap().iter());
 
             match remove_duplicate_sequences(
                 &fq_files,
                 &fq_out.get(label).unwrap(),
-                duplicate_indexes_sample_specific,
+                &duplicated_indexes_by_shard,
             ) {
                 Ok(res) => Some(res),
                 _ => None,
@@ -246,9 +262,9 @@ fn test_fastq_to_hashmap() {
     let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
     let f2 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
 
-    let filt = convert_fastq_to_hashmap(vec![f1, f2], "File1").unwrap();
-    //println!("{:?}", &filt);
-    //assert_eq!(538, filt.1.len());
+    let (_label, seq, idx) = convert_fastq_to_hashmap(vec![f1, f2], "File1").unwrap();
+    assert_eq!(982, seq.len());
+    assert_eq!(538, idx.len());
 }
 
 #[test]
@@ -256,14 +272,18 @@ fn test_identify() {
     let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
     let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
 
-    let f2 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
-    let r2 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
+    // let f2 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
+    // let r2 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
 
     let pair1 = convert_fastq_to_hashmap(vec![f1, r1], "1").unwrap();
-    // let pair2 = convert_fastq_to_hashmap(vec![f2, r2], "2").unwrap();
+    let (label, pair1_seq, _pair1_idx) = pair1;
+    let mut pair1_seq_map = HashMap::new();
+    pair1_seq_map.insert(label, pair1_seq);
 
-    let duplicates = identify_duplicate_sequences(vec![(pair1.0, pair1.1)]);
-    println!("{:?}", duplicates);
+    // println!("{:?}", &pair1_seq_map);
+
+    let duplicates = identify_duplicate_sequences(pair1_seq_map, false);
+    assert_eq!(0, duplicates.get("1").unwrap().len())
 }
 
 #[test]
@@ -271,42 +291,84 @@ fn test_remove() {
     let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
     let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
 
-    let dd1 = "out_dd_1.fq.gz";
-    let dd2 = "out_dd_2.fq.gz";
+    let tmpdir_test = tempdir().unwrap();
+
+    let dd1 = tmpdir_test
+        .path()
+        .join("out_dd_1.fq.gz")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let dd2 = tmpdir_test
+        .path()
+        .join("out_dd_2.fq.gz")
+        .to_str()
+        .unwrap()
+        .to_owned();
 
     let pair1 = convert_fastq_to_hashmap(vec![f1, r1], "1").unwrap();
+    let (label, pair1_seq, pair1_idx) = pair1;
+    let mut pair1_seq_map = HashMap::new();
+    pair1_seq_map.insert(label, pair1_seq);
 
-    let duplicates = identify_duplicate_sequences(vec![(pair1.0, pair1.1)]);
+    let mut duplicates = identify_duplicate_sequences(pair1_seq_map, false);
+    duplicates.get_mut("1").unwrap().extend(pair1_idx.iter());
 
-    let removed =
-        remove_duplicate_sequences(&vec![f1, r1], &vec![dd1, dd2], duplicates.get("1").unwrap());
-    println!("{:?}", removed.unwrap());
+    let deduplication_results = remove_duplicate_sequences(
+        &vec![f1, r1],
+        &vec![&dd1, &dd2],
+        duplicates.get("1").unwrap(),
+    )
+    .unwrap();
+
+    // There is an off by one error somewhere that I need to fix
+    assert_eq!(983, deduplication_results.read_pairs_unique);
+    assert_eq!(538, deduplication_results.read_pairs_duplicated);
 }
 
 #[test]
 fn test_full_dedup() {
-    let f1 = "test_1.fastq.gz".to_owned();
-    let r1 = "test_1.fastq.gz".to_owned();
+    let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz".to_string();
+    let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz".to_string();
 
-    let f2 = "test_DUP_1.fq.gz".to_owned();
-    let r2 = "test_DUP_2.fq.gz".to_owned();
+    let tmpdir_test =    tempdir().unwrap();
+;
 
-    let dd1 = "out_dd_1.fq.gz".to_owned();
-    let dd2 = "out_dd_2.fq.gz".to_owned();
-
-    let dd11 = "out_dd2_1.fq.gz".to_owned();
-    let dd12 = "out_dd2_2.fq.gz".to_owned();
+    let dd1 = tmpdir_test
+        .path()
+        .join("out_dd_1.fq.gz")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let dd2 = tmpdir_test
+        .path()
+        .join("out_dd_2.fq.gz")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let dd11 = tmpdir_test
+        .path()
+        .join("out_dd1_1.fq.gz")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let dd12 = tmpdir_test
+        .path()
+        .join("out_dd1_2.fq.gz")
+        .to_str()
+        .unwrap()
+        .to_owned();
 
     let mut fq_in = HashMap::new();
     let mut fq_out = HashMap::new();
 
-    fq_in.insert("1".to_owned(), vec![f1, r1]);
-    fq_in.insert("2".to_owned(), vec![f2, r2]);
+    fq_in.insert("1".to_owned(), vec![f1.clone(), r1.clone()]);
+    fq_in.insert("2".to_owned(), vec![f1, r1]);
 
     fq_out.insert("1".to_owned(), vec![dd1, dd2]);
     fq_out.insert("2".to_owned(), vec![dd11, dd12]);
 
-    let res = deduplicate_fastq(fq_in, fq_out).unwrap();
+    let res = deduplicate_fastq(fq_in, fq_out, false).unwrap();
 
     println!("{:?}", res);
 }

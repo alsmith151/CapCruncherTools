@@ -2,8 +2,14 @@ import logging
 import pathlib
 
 import click
+import pandas as pd
 
 from . import cct
+import capcruncher_tools.bindings
+
+FORMAT = '%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s'
+logging.basicConfig(format=FORMAT)
+logging.getLogger().setLevel(logging.INFO)
 
 
 @click.group()
@@ -16,30 +22,13 @@ def cli():
 @cli.command()
 @click.argument("infiles", nargs=2)
 @click.option("-o", "--output-prefix", default="dd_")
-def fastq_deduplicate(infiles: tuple, output_prefix: str):
-    """Deduplicates paired FASTQ files.
-    Input files in format: fq1_1,fq2_1,fq3_1 fq1_2,fq2_2,fq3_2
-    """
-    fq_in = {
-        str(ii): [r1, r2]
-        for ii, (r1, r2) in enumerate(
-            zip(*[files.split(",") if "," in files else [files, ] for files in infiles])
-        )
-    }
-
-    fq_out = {
-        str(ii): [f"{output_prefix}{pathlib.Path(read).name}" for read in (r1, r2)]
-        for ii, (r1, r2) in enumerate(
-            zip(*[files.split(",") if "," in files else [files,] for files in infiles])
-        )
-    }
-
-    logging.debug(f"Input: {fq_in}")
-    logging.debug(f"Output: {fq_out}")
-
-    deduplication_results = cct.deduplicate_fastq(fq_in, fq_out)
+def fastq_deduplicate(*args, **kwargs):
     
-    logging.debug(f"Deduplication results: {deduplication_results}")
+    deduplication_results = capcruncher_tools.bindings.fastq_deduplicate(
+        *args, **kwargs
+    )
+
+    print(pd.Series(deduplication_results))
 
 
 if __name__ == "__main__":
