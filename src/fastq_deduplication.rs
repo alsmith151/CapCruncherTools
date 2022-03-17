@@ -1,9 +1,9 @@
-use log::{info, debug, warn};
 use fastq::{each_zipped, Parser, Record};
 use hashbrown::{HashMap, HashSet};
+use log::{debug, info, warn};
 use niffler;
 use rand::prelude::*;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator, ParallelBridge};
 use serde::{Deserialize, Serialize};
 use std::iter::Iterator;
 use std::ops::Add;
@@ -11,7 +11,6 @@ use std::path::Path;
 use std::prelude::rust_2021::*;
 use tempfile::tempdir;
 use twox_hash::xxh3::hash64_with_seed;
-
 
 fn get_fastq_reader_file_handles<P>(
     paths: Vec<P>,
@@ -81,10 +80,11 @@ fn convert_fastq_to_hashmap<P: AsRef<Path>, S: ToString>(
             record_count += 1;
 
             match record_count % 100000 {
-                0 => {info!("Read and processed {} records", record_count)},
+                0 => {
+                    info!("Read and processed {} records", record_count)
+                }
                 _ => {}
-                
-            }            
+            }
 
             let rec1 = r1.unwrap();
             let rec2 = r2.unwrap();
@@ -150,7 +150,7 @@ where
     W: std::io::Write,
 {
     let writing_results = records
-        .iter()
+        .into_iter()
         .zip(handles)
         .map(|(rec, handle)| rec.write(handle))
         .all(|r| r.is_ok());
@@ -165,28 +165,26 @@ fn remove_duplicate_sequences<P>(
     paths_in: &Vec<P>,
     paths_out: &Vec<P>,
     duplicate_indexes: &HashSet<u64>,
+    compression: niffler::Format,
 ) -> Result<FastqReadDeduplicationStats, std::io::Error>
 where
     P: AsRef<Path> + Clone,
 {
     let mut n_records_processed = 0;
     let mut fq_reader_handles = get_fastq_reader_file_handles(paths_in.to_vec())?;
-    let mut fq_writer_handles = get_fastq_writer_file_handles(
-        paths_out.to_vec(),
-        niffler::Format::No,
-        niffler::Level::One,
-    )?;
+    let mut fq_writer_handles =
+        get_fastq_writer_file_handles(paths_out.to_vec(), compression, niffler::Level::Five)?;
 
     each_zipped(
         fq_reader_handles.remove(0),
         fq_reader_handles.remove(0),
         |r1, r2| {
-
             match n_records_processed % 100000 {
-                0 => {info!("Written {} records", n_records_processed)},
+                0 => {
+                    info!("Written {} records", n_records_processed)
+                }
                 _ => {}
-                
-            }      
+            }
             let continue_reading = match (r1, r2) {
                 (Some(rec1), Some(rec2)) => match n_records_processed {
                     n if duplicate_indexes.contains(&n) => (true, true),
@@ -211,7 +209,14 @@ pub fn deduplicate_fastq(
     fq_in: HashMap<String, Vec<String>>,
     fq_out: HashMap<String, Vec<String>>,
     shuffle: bool,
+    compress_output: bool,
 ) -> Result<FastqReadDeduplicationStats, std::io::Error> {
+    
+    let output_compression = match compress_output {
+        true => niffler::Format::Gzip,
+        false => niffler::Format::No,
+    };
+
     let fq_hashmaps: Vec<_> = fq_in
         .clone()
         .into_par_iter()
@@ -240,6 +245,7 @@ pub fn deduplicate_fastq(
                 &fq_files,
                 &fq_out.get(label).unwrap(),
                 &duplicated_indexes_by_shard,
+                output_compression,
             ) {
                 Ok(res) => Some(res),
                 _ => None,
@@ -318,6 +324,7 @@ fn test_remove() {
         &vec![f1, r1],
         &vec![&dd1, &dd2],
         duplicates.get("1").unwrap(),
+        niffler::Format::No,
     )
     .unwrap();
 
@@ -331,8 +338,7 @@ fn test_full_dedup() {
     let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz".to_string();
     let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz".to_string();
 
-    let tmpdir_test =    tempdir().unwrap();
-;
+    let tmpdir_test = tempdir().unwrap();
 
     let dd1 = tmpdir_test
         .path()
@@ -368,7 +374,7 @@ fn test_full_dedup() {
     fq_out.insert("1".to_owned(), vec![dd1, dd2]);
     fq_out.insert("2".to_owned(), vec![dd11, dd12]);
 
-    let res = deduplicate_fastq(fq_in, fq_out, false).unwrap();
+    let res = deduplicate_fastq(fq_in, fq_out, false, false).unwrap();
 
     println!("{:?}", res);
 }
