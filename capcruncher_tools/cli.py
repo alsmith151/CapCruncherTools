@@ -1,13 +1,11 @@
 import logging
-import pathlib
 
 import click
 import pandas as pd
 
-from . import cct
 import capcruncher_tools.bindings
 
-FORMAT = '%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s'
+FORMAT = "%(levelname)s %(name)s %(asctime)-15s %(message)s"
 logging.basicConfig(format=FORMAT)
 logging.getLogger().setLevel(logging.INFO)
 
@@ -22,13 +20,14 @@ def cli():
 @cli.command()
 @click.argument("infiles", nargs=2)
 @click.option("-o", "--output-prefix", default="dd_")
+@click.option("--output-compression", type=click.BOOL, default=False)
 def fastq_deduplicate(*args, **kwargs):
-    
+
     deduplication_results = capcruncher_tools.bindings.fastq_deduplicate(
         *args, **kwargs
     )
 
-    print(pd.Series(deduplication_results))
+    logging.info(pd.Series(deduplication_results).to_frame("count"))
 
 
 if __name__ == "__main__":
