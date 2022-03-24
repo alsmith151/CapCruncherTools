@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 use pythonize::pythonize;
 
 mod fastq_deduplication;
+mod genome_digest;
 
 #[pyfunction]
 #[pyo3(name = "deduplicate_fastq")]

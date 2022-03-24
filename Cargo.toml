@@ -20,6 +20,9 @@ pyo3-log = "0.6.*"
 log = "*"
 ctrlc = "*"
 indicatif = {version = "*", features = ["rayon"]}
+noodles = { version = "0.20.0", features = ["fasta"] }
+bio = "0.40.0"
+
 
 
 [lib]
