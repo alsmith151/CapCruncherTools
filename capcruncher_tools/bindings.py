@@ -1,7 +1,6 @@
 import logging
 import pathlib
 import subprocess
-from joblib import Parallel, delayed
 from . import cct
 
 
@@ -10,6 +9,7 @@ def fastq_deduplicate(
     output_prefix: str,
     output_compression: bool = False,
     n_cores: int = 1,
+    **kwargs
 ):
     """Deduplicates paired FASTQ files.
     Input files in format: fq1_1,fq2_1,fq3_1 fq1_2,fq2_2,fq3_2
@@ -49,8 +49,8 @@ def fastq_deduplicate(
         )
     }
 
-    logging.debug(f"Input: {fq_in}")
-    logging.debug(f"Output: {fq_out}")
+    #logging.debug(f"Input: {fq_in}")
+    #logging.debug(f"Output: {fq_out}")
 
     deduplication_results = cct.deduplicate_fastq(
         fq_in,  # Fastq input list
@@ -59,6 +59,6 @@ def fastq_deduplicate(
         output_compression,  # Compress output
     )
 
-    logging.debug(f"Deduplication results: {deduplication_results}")
+    #logging.debug(f"Deduplication results: {deduplication_results}")
 
     return deduplication_results

@@ -19,6 +19,8 @@ tempfile = "3.3.0"
 pyo3-log = "0.6.*"
 log = "*"
 ctrlc = "*"
+indicatif = {version = "*", features = ["rayon"]}
+
 
 [lib]
 # The name of the native library. This is the name which will be used in Python to import the
