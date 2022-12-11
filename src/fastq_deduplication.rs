@@ -70,6 +70,7 @@ impl FastqDeduplicator {
         error_rate: Option<f32>,
         shuffle_shard_order: bool,
     ) -> Self {
+        
         let output_paths = match output_paths {
             Some(paths) => paths,
             None => paths
@@ -104,12 +105,12 @@ impl FastqDeduplicator {
 
     pub fn identify_duplicates(&mut self) -> Result<(), std::io::Error> {
         
-        
-        // Shuffle the paths if shuffle_shard_order is true
+        info!("Identifying duplicates");
 
+        // Shuffle the paths if shuffle_shard_order is true
         let mut paths = self.paths.clone();
         if self.shuffle_shard_order {
-            let mut rng = &mut thread_rng();
+            let rng = &mut thread_rng();
             paths.shuffle(rng);
         }
 
@@ -123,6 +124,9 @@ impl FastqDeduplicator {
 
         // Iterate over the paths and identify the duplicate read positions
         for (r1, r2) in paths.iter() {
+
+            info!("Processing {} and {}", r1, r2);
+
             let mut file_handles = get_fastq_reader_file_handles(vec![r1, r2]).unwrap();
             let mut duplicate_read_positions = Vec::new();
             let mut read_count = 0;
@@ -133,6 +137,12 @@ impl FastqDeduplicator {
                 file_handles.remove(0),
                 |r1, r2| match (r1, r2) {
                     (Some(rec1), Some(rec2)) => {
+
+                        // Check if 100_000 reads have been processed
+                        if read_count % 100_000 == 0 {
+                            info!("Processed {} reads", read_count);
+                        }
+
                         let sequences = [rec1.seq(), rec2.seq()].concat();
                         match items_seen.insert(&sequences) {
                             true => (),
@@ -160,6 +170,8 @@ impl FastqDeduplicator {
             true => niffler::Format::Gzip,
             false => niffler::Format::No,
         };
+
+        info!("Removing duplicate sequences")
 
         // Iterate over the paths and remove the duplicate read positions
         // and write the deduplicated reads to the output paths
