@@ -25,6 +25,7 @@ indicatif = {version = "*", features = ["rayon"]}
 noodles = { version = "0.20.0", features = ["fasta"] }
 bio = "0.40.0"
 itertools = "0.10.5"
+probabilistic-collections = "0.7.0"
 
 
 

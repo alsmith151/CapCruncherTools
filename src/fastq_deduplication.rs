@@ -11,6 +11,7 @@ use std::prelude::rust_2021::*;
 
 use ahash::{RandomState, HashSetExt};
 use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
+use probabilistic_collections::cuckoo::CuckooFilter;
 
 
 use crate::utils::{get_fastq_reader_file_handles, get_fastq_writer_file_handles, write_records};
@@ -125,13 +126,9 @@ impl FastqDeduplicator {
 
         // Create a bloom filter with the expected number of items and the false positive rate
         let expected_num_items = self.expected_num_items;
-        let false_positive_rate = self.error_rate;
-
-        let hasher_1 = RandomState::new();
-        let hasher_2 = RandomState::new();
-
+        // let false_positive_rate = self.error_rate;
         
-        let mut items_seen = BloomFilter::with_rate_and_hashers(false_positive_rate, expected_num_items, hasher_1, hasher_2);
+        let mut items_seen: CuckooFilter<Vec<u8>> = CuckooFilter::new(expected_num_items as usize);
         
 
         // Create a HashMap to store the duplicate read positions
@@ -159,12 +156,13 @@ impl FastqDeduplicator {
                         }
 
                         let sequences = [rec1.seq(), rec2.seq()].concat();
-                        match items_seen.insert(&sequences) {
-                            true => (),
-                            false => {
-                                duplicate_read_positions.push(read_count);
-                            }
+
+                        if !items_seen.contains(&sequences) {
+                            items_seen.insert(&sequences);
+                        } else {
+                            duplicate_read_positions.push(read_count);
                         }
+                        
 
                         read_count += 1;
                         (true, true)
