@@ -123,7 +123,7 @@ impl FastqDeduplicator {
         }
 
         // Create a bloom filter with the expected number of items and the false positive rate
-        let expected_num_items = (self.paths.len() as u32 * 1e6 as u32) as u32;
+        let expected_num_items = self.expected_num_items;
         let false_positive_rate = self.error_rate;
         let mut items_seen = BloomFilter::with_rate(false_positive_rate, expected_num_items);
 

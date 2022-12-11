@@ -7,14 +7,17 @@ mod utils;
 
 // Deduplicate FASTQ files
 #[pyfunction]
-#[pyo3(name = "fastq_deduplicate", text_signature = "(fq_in, fq_out, shuffle, error_rate/)")]
+#[pyo3(
+    name = "fastq_deduplicate",
+    text_signature = "(fq_in, fq_out, shuffle, error_rate/)"
+)]
 fn deduplicate_fastq_py(
     fq_in: Vec<(String, String)>,
     fq_out: Option<Vec<(String, String)>>,
     shuffle: bool,
+    expected_num_items: Option<u32>,
     error_rate: Option<f32>,
 ) -> Py<PyAny> {
-
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
 
@@ -26,20 +29,23 @@ fn deduplicate_fastq_py(
         fq_in,
         fq_out,
         error_rate,
+        expected_num_items,
         shuffle,
     );
 
     // Identify duplicates
-    deduplicator.identify_duplicates().expect("Error identifying duplicates");
+    deduplicator
+        .identify_duplicates()
+        .expect("Error identifying duplicates");
 
     // Remove duplicates
-    let deduplication_results = deduplicator.remove_duplicate_sequences().expect("Error removing duplicate sequences");
+    let deduplication_results = deduplicator
+        .remove_duplicate_sequences()
+        .expect("Error removing duplicate sequences");
 
     // Convert statistics to Python
     let py_deduplication_results = pythonize(py, &deduplication_results).unwrap();
     py_deduplication_results
-
-
 }
 
 #[pymodule]
