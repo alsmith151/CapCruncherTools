@@ -1,6 +1,8 @@
+use bloom::{BloomFilter, ASMS};
 use fastq::{each_zipped, Parser, Record};
 use hashbrown::{HashMap, HashSet};
 use indicatif::ParallelProgressIterator;
+use itertools::Itertools;
 use log::{debug, info, warn};
 use rand::prelude::*;
 use rayon::prelude::*;
@@ -9,365 +11,303 @@ use std::iter::Iterator;
 use std::ops::Add;
 use std::path::Path;
 use std::prelude::rust_2021::*;
-use tempfile::tempdir;
-use twox_hash::xxh3::hash64_with_seed;
 
-fn get_fastq_reader_file_handles<P>(
-    paths: Vec<P>,
-) -> Result<Vec<Parser<Box<dyn std::io::Read>>>, std::io::Error>
-where
-    P: AsRef<Path>,
-{
-    let file_handles: Vec<_> = paths
-        .iter()
-        .map(|p| niffler::from_path(p.as_ref()).expect("Compression not recognised"))
-        .map(|(fh, _fmt)| Parser::new(fh))
-        .collect();
+use crate::utils::{get_fastq_reader_file_handles, get_fastq_writer_file_handles, write_records};
 
-    Ok(file_handles)
-}
-
-fn get_fastq_writer_file_handles<P>(
-    paths: Vec<P>,
-    compression_format: niffler::compression::Format,
-    compression_level: niffler::Level,
-) -> Result<Vec<Box<dyn std::io::Write>>, std::io::Error>
-where
-    P: AsRef<Path>,
-{
-    let file_handles: Vec<_> = paths
-        .iter()
-        .map(|p| {
-            niffler::to_path(p.as_ref(), compression_format, compression_level)
-                .expect("Failed to create output file")
-        })
-        .collect();
-
-    Ok(file_handles)
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
-
-pub struct FastqReadDeduplicationStats {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeduplicationStats {
     read_pairs_total: u64,
     read_pairs_duplicated: u64,
     read_pairs_unique: u64,
 }
 
-impl Add for FastqReadDeduplicationStats {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
+impl DeduplicationStats {
+    pub fn new(read_pairs_total: u64, read_pairs_unique: u64) -> Self {
         Self {
-            read_pairs_total: self.read_pairs_total + other.read_pairs_total,
-            read_pairs_duplicated: self.read_pairs_duplicated + other.read_pairs_duplicated,
-            read_pairs_unique: self.read_pairs_unique + other.read_pairs_unique,
+            read_pairs_total,
+            read_pairs_unique,
+            read_pairs_duplicated: read_pairs_total - read_pairs_unique,
+        }
+    }
+
+    pub fn get_read_pairs_total(&self) -> u64 {
+        self.read_pairs_total
+    }
+
+    pub fn get_read_pairs_duplicated(&self) -> u64 {
+        self.read_pairs_duplicated
+    }
+
+    pub fn get_read_pairs_unique(&self) -> u64 {
+        self.read_pairs_unique
+    }
+}
+
+impl Add for DeduplicationStats {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            read_pairs_total: self.read_pairs_total + rhs.read_pairs_total,
+            read_pairs_duplicated: self.read_pairs_duplicated + rhs.read_pairs_duplicated,
+            read_pairs_unique: self.read_pairs_unique + rhs.read_pairs_unique,
         }
     }
 }
 
-fn convert_fastq_to_hashmap<P: AsRef<Path>, S: ToString>(
-    paths: Vec<P>,
-    label: S,
-) -> Result<(String, HashMap<u64, u64>, HashSet<u64>), std::io::Error> {
-    let mut file_handles = get_fastq_reader_file_handles(paths)?;
-    let mut sequences_unique: HashMap<u64, u64> = HashMap::new();
-    let mut sequences_duplicated: HashSet<u64> = HashSet::new();
-    let mut record_count = 0;
-
-    each_zipped(
-        file_handles.remove(0),
-        file_handles.remove(0),
-        |r1, r2| match (r1, r2) {
-            (Some(rec1), Some(rec2)) => {
-                record_count += 1;
-                let sequences = [rec1.seq(), rec2.seq()].concat();
-                let sequences_hashed = hash64_with_seed(&sequences, 42);
-                match sequences_unique.insert(sequences_hashed, record_count) {
-                    None => {}
-                    Some(is_duplicated) => {
-                        sequences_duplicated.insert(is_duplicated);
-                    }
-                }
-
-                (true, true)
-            }
-            _ => (false, false),
-        },
-    )?;
-
-    Ok((label.to_string(), sequences_unique, sequences_duplicated))
-}
-
-fn identify_duplicate_sequences(
-    sequences: HashMap<String, HashMap<u64, u64>>,
-    shuffle: bool,
-) -> HashMap<String, HashSet<u64>> {
-    let mut sequences_unique = HashSet::new();
-    let mut records_duplicated: HashMap<String, HashSet<u64>> =
-        HashMap::with_capacity(sequences.len());
-
-    //Random permutations to stop the same sequences being removed
-    let keys: Vec<_> = match shuffle {
-        false => sequences.keys().collect(),
-        true => {
-            let mut rng = thread_rng();
-            let mut keys: Vec<_> = sequences.keys().collect();
-            keys.shuffle(&mut rng);
-            keys
-        }
-    };
-
-    for key in keys {
-        let mut duplicated = HashSet::new();
-
-        for (sequence_hashed, record_number) in sequences.get(key).unwrap() {
-            match sequences_unique.insert(sequence_hashed) {
-                true => {}
-                false => {
-                    duplicated.insert(*record_number);
-                }
-            }
-        }
-        records_duplicated.insert(key.to_string(), duplicated);
-    }
-
-    records_duplicated
-}
-
-fn write_records<R, W>(records: Vec<R>, handles: &mut Vec<W>) -> (bool, bool)
-where
-    R: Record,
-    W: std::io::Write,
-{
-    let writing_results = records
-        .into_iter()
-        .zip(handles)
-        .map(|(rec, handle)| rec.write(handle))
-        .all(|r| r.is_ok());
-
-    match writing_results {
-        true => (true, true),
-        false => (false, false),
-    }
-}
-
-fn remove_duplicate_sequences<P>(
-    paths_in: &[P],
-    paths_out: &[P],
-    duplicate_indexes: &HashSet<u64>,
-    compression: niffler::Format,
-) -> Result<FastqReadDeduplicationStats, std::io::Error>
-where
-    P: AsRef<Path> + Clone,
-{
-    let mut n_records_processed = 0;
-    let mut fq_reader_handles = get_fastq_reader_file_handles(paths_in.to_vec())?;
-    let mut fq_writer_handles =
-        get_fastq_writer_file_handles(paths_out.to_vec(), compression, niffler::Level::Five)?;
-
-    each_zipped(
-        fq_reader_handles.remove(0),
-        fq_reader_handles.remove(0),
-        |r1, r2| {
-            let continue_reading = match (r1, r2) {
-                (Some(rec1), Some(rec2)) => match n_records_processed {
-                    n if duplicate_indexes.contains(&n) => (true, true),
-                    _ => write_records(vec![rec1, rec2], &mut fq_writer_handles),
-                },
-                _ => (false, false),
-            };
-
-            n_records_processed += 1;
-            continue_reading
-        },
-    )?;
-
-    Ok(FastqReadDeduplicationStats {
-        read_pairs_total: n_records_processed,
-        read_pairs_duplicated: duplicate_indexes.len() as u64,
-        read_pairs_unique: n_records_processed - duplicate_indexes.len() as u64,
-    })
-}
-
-pub fn deduplicate_fastq(
-    fq_in: HashMap<String, Vec<String>>,
-    fq_out: HashMap<String, Vec<String>>,
-    shuffle: bool,
+pub struct FastqDeduplicator {
+    paths: Vec<(String, String)>,
+    output_paths: Vec<(String, String)>,
+    duplicates: HashMap<(String, String), Vec<usize>>,
+    error_rate: f32,
+    shuffle_shard_order: bool,
     compress_output: bool,
-) -> Result<FastqReadDeduplicationStats, std::io::Error> {
-    let output_compression = match compress_output {
-        true => niffler::Format::Gzip,
-        false => niffler::Format::No,
-    };
-
-    // // Ensure that rayon does not go crazy with the number of cores
-    // rayon::ThreadPoolBuilder::new().num_threads(12).build_global().unwrap();
-
-    debug!("Started shard based deduplication");
-
-    let fq_hashmaps: Vec<_> = fq_in
-        .clone()
-        .into_par_iter()
-        .progress_count(fq_in.len() as u64)
-        .map(|(label, fq_pair)| convert_fastq_to_hashmap(fq_pair, label).unwrap())
-        .collect();
-
-    let (shard_unique_seq, shard_dup_index) = fq_hashmaps.into_iter().fold(
-        (HashMap::new(), HashMap::new()),
-        |(mut shard_sequences, mut shard_duplicates), (label, seq, dup)| {
-            shard_sequences.insert(label.clone(), seq);
-            shard_duplicates.insert(label, dup);
-            (shard_sequences, shard_duplicates)
-        },
-    );
-
-    debug!("Identifying duplicates accross all shards");
-    let collated_duplicated_indexes = identify_duplicate_sequences(shard_unique_seq, shuffle);
-
-    debug!("Removing duplicates accross all shards");
-    let duplication_results = fq_in
-        .par_iter()
-        .progress_count(fq_in.len() as u64)
-        .filter_map(|(label, fq_files)| {
-            let mut duplicated_indexes_by_shard =
-                collated_duplicated_indexes.get(label).unwrap().to_owned();
-            duplicated_indexes_by_shard.extend(shard_dup_index.get(label).unwrap().iter());
-
-            match remove_duplicate_sequences(
-                fq_files,
-                fq_out.get(label).unwrap(),
-                &duplicated_indexes_by_shard,
-                output_compression,
-            ) {
-                Ok(res) => Some(res),
-                _ => None,
-            }
-        })
-        .reduce(
-            || FastqReadDeduplicationStats {
-                read_pairs_total: 0,
-                read_pairs_duplicated: 0,
-                read_pairs_unique: 0,
-            },
-            |a, b| a + b,
-        );
-
-    Ok(duplication_results.to_owned())
 }
 
-#[test]
-fn test_fastq_to_hashmap() {
-    let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
-    let f2 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
+impl FastqDeduplicator {
+    pub fn new(
+        paths: Vec<(String, String)>,
+        output_paths: Option<Vec<(String, String)>>,
+        error_rate: Option<f32>,
+        shuffle_shard_order: bool,
+    ) -> Self {
+        let output_paths = match output_paths {
+            Some(paths) => paths,
+            None => paths
+                .iter()
+                .map(|(r1, r2)| {
+                    let o1 = r1.replace(".fastq.gz", "_deduplicated.fastq.gz");
+                    let o2 = r2.replace(".fastq.gz", "_deduplicated.fastq.gz");
+                    (o1, o2)
+                })
+                .collect(),
+        };
 
-    let (_label, seq, idx) = convert_fastq_to_hashmap(vec![f1, f2], "File1").unwrap();
-    assert_eq!(982, seq.len());
-    assert_eq!(538, idx.len());
+        let error = match error_rate {
+            Some(error) => error,
+            None => 1e-4,
+        };
+
+        let compress_output = match output_paths[0].0.split('.').last() {
+            Some("gz") => true,
+            _ => false,
+        };
+
+        Self {
+            paths,
+            output_paths,
+            duplicates: HashMap::new(),
+            error_rate: error,
+            shuffle_shard_order,
+            compress_output,
+        }
+    }
+
+    pub fn identify_duplicates(&mut self) -> Result<(), std::io::Error> {
+        
+        
+        // Shuffle the paths if shuffle_shard_order is true
+
+        let mut paths = self.paths.clone();
+        if self.shuffle_shard_order {
+            let mut rng = &mut thread_rng();
+            paths.shuffle(rng);
+        }
+
+        // Create a bloom filter with the expected number of items and the false positive rate
+        let expected_num_items = (self.paths.len() as u32 * 1e6 as u32) as u32;
+        let false_positive_rate = self.error_rate;
+        let mut items_seen = BloomFilter::with_rate(false_positive_rate, expected_num_items);
+
+        // Create a HashMap to store the duplicate read positions
+        let mut duplicates = HashMap::new();
+
+        // Iterate over the paths and identify the duplicate read positions
+        for (r1, r2) in paths.iter() {
+            let mut file_handles = get_fastq_reader_file_handles(vec![r1, r2]).unwrap();
+            let mut duplicate_read_positions = Vec::new();
+            let mut read_count = 0;
+
+            // Iterate over the read pairs and identify the duplicate read positions
+            each_zipped(
+                file_handles.remove(0),
+                file_handles.remove(0),
+                |r1, r2| match (r1, r2) {
+                    (Some(rec1), Some(rec2)) => {
+                        let sequences = [rec1.seq(), rec2.seq()].concat();
+                        match items_seen.insert(&sequences) {
+                            true => (),
+                            false => {
+                                duplicate_read_positions.push(read_count);
+                            }
+                        }
+
+                        read_count += 1;
+                        (true, true)
+                    }
+                    _ => (false, false),
+                },
+            )?;
+            duplicates.insert((r1.to_owned(), r2.to_owned()), duplicate_read_positions);
+        }
+
+        self.duplicates = duplicates;
+        Ok(())
+    }
+
+    pub fn remove_duplicate_sequences(&self) -> Result<DeduplicationStats, std::io::Error> {
+        // Identify the output format
+        let output_format = match self.compress_output {
+            true => niffler::Format::Gzip,
+            false => niffler::Format::No,
+        };
+
+        // Iterate over the paths and remove the duplicate read positions
+        // and write the deduplicated reads to the output paths
+        // Return the deduplication statistics
+        let deduplication_stats = self
+            .paths
+            .par_iter()
+            .zip(self.output_paths.to_owned())
+            .map(|((r1, r2), (o1, o2))| {
+                let mut file_handles = get_fastq_reader_file_handles(vec![r1, r2]).unwrap();
+                let mut writer_handles =
+                    get_fastq_writer_file_handles(vec![o1, o2], output_format, None)
+                        .expect("Cannot open files for writing");
+
+                let mut read_number: usize = 0;
+                let mut duplicate_count: usize = 0;
+
+                let fq_file_names_key = (r1.to_owned(), r2.to_owned());
+                let duplicates = self.duplicates.get(&(fq_file_names_key)).unwrap();
+
+                each_zipped(
+                    file_handles.remove(0),
+                    file_handles.remove(0),
+                    |r1, r2| match (r1, r2) {
+                        (Some(rec1), Some(rec2)) => {
+                            if !duplicates.contains(&read_number) {
+                                write_records(vec![rec1, rec2], &mut writer_handles);
+                            } else {
+                                duplicate_count += 1;
+                            }
+
+                            read_number += 1;
+                            (true, true)
+                        }
+                        _ => (false, false),
+                    },
+                )
+                .expect("Cannot read fastq files");
+
+                info!(
+                    "Removed {} duplicates from {} and {}",
+                    duplicate_count, r1, r2
+                );
+                DeduplicationStats::new(read_number as u64, (read_number - duplicate_count) as u64)
+            })
+            .reduce(|| DeduplicationStats::new(0, 0), |acc, x| acc + x);
+
+        Ok(deduplication_stats)
+    }
 }
 
-#[test]
-fn test_identify() {
-    let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
-    let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
+// Test FastqDeduplicator
+// Use files from tests/fastq_deduplicate
+// Test identify and remove duplicates functions on copies of the same file
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile;
 
-    // let f2 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
-    // let r2 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
+    #[test]
+    fn test_fastq_deduplicator() {
+        let tmpdir = tempfile::tempdir().unwrap();
 
-    let pair1 = convert_fastq_to_hashmap(vec![f1, r1], "1").unwrap();
-    let (label, pair1_seq, _pair1_idx) = pair1;
-    let mut pair1_seq_map = HashMap::new();
-    pair1_seq_map.insert(label, pair1_seq);
+        let paths = vec![(
+            "tests/fastq_deduplicate/duplicated_1.fastq.gz".to_owned(),
+            "tests/fastq_deduplicate/duplicated_2.fastq.gz".to_owned(),
+        )];
 
-    // println!("{:?}", &pair1_seq_map);
+        let output_paths = vec![(
+            tmpdir
+                .path()
+                .join("reads_1_dedup.fq.gz".to_owned())
+                .to_str()
+                .unwrap()
+                .to_owned(),
+            tmpdir
+                .path()
+                .join("reads_2_dedup.fq.gz".to_owned())
+                .to_str()
+                .unwrap()
+                .to_owned(),
+        )];
 
-    let duplicates = identify_duplicate_sequences(pair1_seq_map, false);
-    assert_eq!(0, duplicates.get("1").unwrap().len())
-}
+        let mut deduplicator = FastqDeduplicator::new(paths, Some(output_paths), Some(0.01), true);
+        deduplicator.identify_duplicates().unwrap();
+        let deduplication_stats = deduplicator.remove_duplicate_sequences().unwrap();
 
-#[test]
-fn test_remove() {
-    let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz";
-    let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz";
+        println!("{:?}", deduplication_stats);
 
-    let tmpdir_test = tempdir().unwrap();
+        assert_eq!(deduplication_stats.get_read_pairs_total(), 1520);
+        assert_eq!(deduplication_stats.get_read_pairs_unique(), 982);
+        assert_eq!(deduplication_stats.get_read_pairs_duplicated(), 538);
+    }
 
-    let dd1 = tmpdir_test
-        .path()
-        .join("out_dd_1.fq.gz")
-        .to_str()
-        .unwrap()
-        .to_owned();
-    let dd2 = tmpdir_test
-        .path()
-        .join("out_dd_2.fq.gz")
-        .to_str()
-        .unwrap()
-        .to_owned();
+    #[test]
+    fn test_fastq_deduplicator_multiple_files() {
+        let tmpdir = tempfile::tempdir().unwrap();
 
-    let pair1 = convert_fastq_to_hashmap(vec![f1, r1], "1").unwrap();
-    let (label, pair1_seq, pair1_idx) = pair1;
-    let mut pair1_seq_map = HashMap::new();
-    pair1_seq_map.insert(label, pair1_seq);
+        let paths = vec![
+            (
+                "tests/fastq_deduplicate/duplicated_1.fastq.gz".to_owned(),
+                "tests/fastq_deduplicate/duplicated_2.fastq.gz".to_owned(),
+            ),
+            (
+                "tests/fastq_deduplicate/duplicated2_1.fastq.gz".to_owned(),
+                "tests/fastq_deduplicate/duplicated2_2.fastq.gz".to_owned(),
+            ),
+        ];
 
-    let mut duplicates = identify_duplicate_sequences(pair1_seq_map, false);
-    duplicates.get_mut("1").unwrap().extend(pair1_idx.iter());
+        let output_paths = vec![
+            (
+                tmpdir
+                    .path()
+                    .join("reads_1_dedup.fq.gz".to_owned())
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+                tmpdir
+                    .path()
+                    .join("reads_2_dedup.fq.gz".to_owned())
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+            ),
+            (
+                tmpdir
+                    .path()
+                    .join("reads2_1_dedup.fq.gz".to_owned())
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+                tmpdir
+                    .path()
+                    .join("reads2_2_dedup.fq.gz".to_owned())
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+            ),
+        ];
 
-    let deduplication_results = remove_duplicate_sequences(
-        &[f1, r1],
-        &[&dd1, &dd2],
-        duplicates.get("1").unwrap(),
-        niffler::Format::No,
-    )
-    .unwrap();
+        let mut deduplicator = FastqDeduplicator::new(paths, Some(output_paths), Some(0.01), true);
+        deduplicator.identify_duplicates().unwrap();
+        let deduplication_stats = deduplicator.remove_duplicate_sequences().unwrap();
 
-    // There is an off by one error somewhere that I need to fix
-    assert_eq!(983, deduplication_results.read_pairs_unique);
-    assert_eq!(538, deduplication_results.read_pairs_duplicated);
-}
+        println!("{:?}", deduplication_stats);
 
-#[test]
-fn test_full_dedup() {
-    let f1 = "tests/fastq_deduplicate/duplicated_1.fastq.gz".to_string();
-    let r1 = "tests/fastq_deduplicate/duplicated_2.fastq.gz".to_string();
-
-    let tmpdir_test = tempdir().unwrap();
-
-    let dd1 = tmpdir_test
-        .path()
-        .join("out_dd_1.fq.gz")
-        .to_str()
-        .unwrap()
-        .to_owned();
-    let dd2 = tmpdir_test
-        .path()
-        .join("out_dd_2.fq.gz")
-        .to_str()
-        .unwrap()
-        .to_owned();
-    let dd11 = tmpdir_test
-        .path()
-        .join("out_dd1_1.fq.gz")
-        .to_str()
-        .unwrap()
-        .to_owned();
-    let dd12 = tmpdir_test
-        .path()
-        .join("out_dd1_2.fq.gz")
-        .to_str()
-        .unwrap()
-        .to_owned();
-
-    let mut fq_in = HashMap::new();
-    let mut fq_out = HashMap::new();
-
-    fq_in.insert("1".to_owned(), vec![f1.clone(), r1.clone()]);
-    fq_in.insert("2".to_owned(), vec![f1, r1]);
-
-    fq_out.insert("1".to_owned(), vec![dd1, dd2]);
-    fq_out.insert("2".to_owned(), vec![dd11, dd12]);
-
-    let res = deduplicate_fastq(fq_in, fq_out, false, false).unwrap();
-
-    println!("{:?}", res);
+        assert_eq!(deduplication_stats.get_read_pairs_total(), 3040);
+        assert_eq!(deduplication_stats.get_read_pairs_unique(), 982);
+        assert_eq!(deduplication_stats.get_read_pairs_duplicated(), 2058);
+    }
 }
