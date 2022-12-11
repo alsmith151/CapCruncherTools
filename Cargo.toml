@@ -9,6 +9,7 @@ edition = "2021"
 niffler = "2.3.2"
 fastq = "0.6.0"
 hashbrown = {version = "*", features = ["rayon"]}
+ahash = "0.8.2"
 rayon = "*"
 rand = "0.8.5"
 pyo3 = { version = "0.16.*", features = ["extension-module", "serde", "hashbrown"] }

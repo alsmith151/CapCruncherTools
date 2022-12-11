@@ -1,16 +1,17 @@
 use bloom::{BloomFilter, ASMS};
 use fastq::{each_zipped, Parser, Record};
 use hashbrown::{HashMap, HashSet};
-use indicatif::ParallelProgressIterator;
-use itertools::Itertools;
 use log::{debug, info, warn};
 use rand::prelude::*;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::iter::Iterator;
 use std::ops::Add;
-use std::path::Path;
 use std::prelude::rust_2021::*;
+
+use ahash::{RandomState, HashSetExt};
+use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
+
 
 use crate::utils::{get_fastq_reader_file_handles, get_fastq_writer_file_handles, write_records};
 
@@ -125,7 +126,13 @@ impl FastqDeduplicator {
         // Create a bloom filter with the expected number of items and the false positive rate
         let expected_num_items = self.expected_num_items;
         let false_positive_rate = self.error_rate;
-        let mut items_seen = BloomFilter::with_rate(false_positive_rate, expected_num_items);
+
+        let hasher_1 = RandomState::new();
+        let hasher_2 = RandomState::new();
+
+        
+        let mut items_seen = BloomFilter::with_rate_and_hashers(false_positive_rate, expected_num_items, hasher_1, hasher_2);
+        
 
         // Create a HashMap to store the duplicate read positions
         let mut duplicates = HashMap::new();
