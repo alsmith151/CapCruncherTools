@@ -58,6 +58,7 @@ pub struct FastqDeduplicator {
     paths: Vec<(String, String)>,
     output_paths: Vec<(String, String)>,
     duplicates: HashMap<(String, String), Vec<usize>>,
+    expected_num_items: u32,
     error_rate: f32,
     shuffle_shard_order: bool,
     compress_output: bool,
@@ -68,6 +69,7 @@ impl FastqDeduplicator {
         paths: Vec<(String, String)>,
         output_paths: Option<Vec<(String, String)>>,
         error_rate: Option<f32>,
+        expected_num_items: Option<u32>,
         shuffle_shard_order: bool,
     ) -> Self {
         
@@ -88,6 +90,11 @@ impl FastqDeduplicator {
             None => 1e-4,
         };
 
+        let expected_num_items = match expected_num_items {
+            Some(expected_num_items) => expected_num_items,
+            None => (paths.len() as u32 * 1e6 as u32) as u32,
+        };
+
         let compress_output = match output_paths[0].0.split('.').last() {
             Some("gz") => true,
             _ => false,
@@ -97,6 +104,7 @@ impl FastqDeduplicator {
             paths,
             output_paths,
             duplicates: HashMap::new(),
+            expected_num_items: expected_num_items,
             error_rate: error,
             shuffle_shard_order,
             compress_output,
@@ -171,7 +179,7 @@ impl FastqDeduplicator {
             false => niffler::Format::No,
         };
 
-        info!("Removing duplicate sequences")
+        info!("Removing duplicate sequences");
 
         // Iterate over the paths and remove the duplicate read positions
         // and write the deduplicated reads to the output paths
@@ -255,7 +263,7 @@ mod tests {
                 .to_owned(),
         )];
 
-        let mut deduplicator = FastqDeduplicator::new(paths, Some(output_paths), Some(0.01), true);
+        let mut deduplicator = FastqDeduplicator::new(paths, Some(output_paths), Some(0.01), None, true);
         deduplicator.identify_duplicates().unwrap();
         let deduplication_stats = deduplicator.remove_duplicate_sequences().unwrap();
 
@@ -312,7 +320,7 @@ mod tests {
             ),
         ];
 
-        let mut deduplicator = FastqDeduplicator::new(paths, Some(output_paths), Some(0.01), true);
+        let mut deduplicator = FastqDeduplicator::new(paths, Some(output_paths), Some(0.01), None, true);
         deduplicator.identify_duplicates().unwrap();
         let deduplication_stats = deduplicator.remove_duplicate_sequences().unwrap();
 

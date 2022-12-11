@@ -29,6 +29,7 @@ def cli():
     default="deduped",
 )
 @click.option("-e", "--error-rate", help="Error rate for deduplication", default=0.01)
+@click.option("-n", "--expected-n-reads", help="Expected number of reads total", default=1000000)
 @click.option(
     "--shuffle", help="Shuffle shards before deduplication", default=False, is_flag=True
 )
