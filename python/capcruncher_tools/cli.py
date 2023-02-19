@@ -44,14 +44,16 @@ def fastq_deduplicate(*args, **kwargs):
     fq_input = list(zip(kwargs["fastq1"], kwargs["fastq2"]))
     fq_output = [
         (
-            os.path.join(kwargs["output_prefix"], os.path.basename(f1)),
-            os.path.join(kwargs["output_prefix"], os.path.basename(f2)),
+            kwargs["output_prefix"]+ os.path.basename(f1),
+            kwargs["output_prefix"] + os.path.basename(f2),
         )
         for f1, f2 in fq_input
     ]
 
     output_path = pathlib.Path(fq_output[0][0]).parent
     output_path.mkdir(parents=True, exist_ok=True)
+
+    print(fq_output)
 
     deduplication_results = deduplicate.fastq_deduplicate(
         fq_input, # Infiles
