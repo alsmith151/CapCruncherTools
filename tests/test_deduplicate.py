@@ -1,7 +1,7 @@
 import pytest
 import os
 import click.testing
-from capcruncher_tools.cli import cli
+from python.cli import cli
 
 
 @pytest.fixture(scope="module")
