@@ -53,8 +53,6 @@ def fastq_deduplicate(*args, **kwargs):
     output_path = pathlib.Path(fq_output[0][0]).parent
     output_path.mkdir(parents=True, exist_ok=True)
 
-    print(fq_output)
-
     deduplication_results = deduplicate.fastq_deduplicate(
         fq_input, # Infiles
         fq_output, # Outfiles
