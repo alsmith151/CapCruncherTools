@@ -1,17 +1,22 @@
 [project]
-authors = [{name = "asmith"}, {email = "alastair.smith@ndcls.ox.ac.uk"}]
-dependencies = ["click", "toml>=0.10.0", "pandas", "joblib"]
-name = "capcruncher_tools"
+authors = [{ name = "asmith" }, { email = "alastair.smith@ndcls.ox.ac.uk" }]
+dependencies = ["click", "toml>=0.10.0", "pandas", "tabulate"]
+name = "capcruncher-tools"
 version = "0.1.0"
 description = "Extra utilities to enhance CapCruncher"
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
 
 [build-system]
 build-backend = "maturin"
-requires = ["maturin>=0.12.11", "setuptools"]
+requires = ["maturin>=0.14", "setuptools"]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
 
 [package.metadata.maturin]
-python-source = "capcruncher_tools"
+name = "capcruncher_tools.capcruncher_tools_rs"
+
 
 [project.scripts]
 capcruncher-tools = "capcruncher_tools.cli:cli"

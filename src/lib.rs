@@ -1,22 +1,20 @@
 use pyo3::prelude::*;
 use pythonize::pythonize;
 
-mod fastq_deduplication;
 mod genome_digest;
 mod utils;
+mod fastq_deduplication;
 
-// Deduplicate FASTQ files
+// Rust based. Deduplicate FASTQ files based on exact sequence matches. Returns a dictionary with statistics."
 #[pyfunction]
 #[pyo3(
     name = "fastq_deduplicate",
-    text_signature = "(fq_in, fq_out, shuffle, error_rate/)"
+    text_signature = "(fq_in, fq_out, shuffle)",
 )]
 fn deduplicate_fastq_py(
     fq_in: Vec<(String, String)>,
     fq_out: Option<Vec<(String, String)>>,
     shuffle: bool,
-    expected_num_items: Option<u32>,
-    error_rate: Option<f32>,
 ) -> Py<PyAny> {
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
@@ -28,30 +26,28 @@ fn deduplicate_fastq_py(
     let mut deduplicator = fastq_deduplication::FastqDeduplicator::new(
         fq_in,
         fq_out,
-        error_rate,
-        expected_num_items,
         shuffle,
     );
 
-    // Identify duplicates
-    deduplicator
-        .identify_duplicates()
-        .expect("Error identifying duplicates");
-
-    // Remove duplicates
-    let deduplication_results = deduplicator
-        .remove_duplicate_sequences()
-        .expect("Error removing duplicate sequences");
+    // Run the deduplication
+    let deduplication_results = deduplicator.write_unique_reads().expect("Error during deduplication");
 
     // Convert statistics to Python
     let py_deduplication_results = pythonize(py, &deduplication_results).unwrap();
     py_deduplication_results
 }
 
+
 #[pymodule]
 #[pyo3(name = "capcruncher_tools")]
 fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
+
+    // Initialize the logger
     pyo3_log::init();
-    m.add_function(wrap_pyfunction!(deduplicate_fastq_py, m)?)?;
+
+    // Create a submodule
+    let deduplicate = PyModule::new(_py, "deduplicate")?;
+    deduplicate.add_function(wrap_pyfunction!(deduplicate_fastq_py, m)?)?;
+    m.add_submodule(deduplicate)?;
     Ok(())
 }
