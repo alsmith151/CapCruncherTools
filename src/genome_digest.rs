@@ -1,14 +1,13 @@
 use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use bio::io::bed;
 use bio::io::fasta;
 use bio::pattern_matching::bom::BOM;
 use log::{debug, error, info, warn};
-use memchr::memmem;
-use rayon::prelude::*;
 use std::prelude::rust_2021::*;
-use std::rc::Rc;
 
 struct DigestedFastaEntry<'a> {
     name: String,
@@ -84,38 +83,81 @@ pub fn digest_fasta(
     output: String,
     remove_recognition_site: bool,
     min_slice_length: Option<usize>,
+    n_threads: Option<usize>,
 ) -> Result<(), std::io::Error> {
-    let mut reader = fasta::Reader::from_file(fasta).expect("Error opening FASTA file");
-    let mut writer = bed::Writer::to_file(output).expect("Error opening BED output file");
+    let (fasta_fh, _compression) = niffler::from_path(&fasta).expect("Error opening FASTA file");
+    let fasta_reader = fasta::Reader::new(fasta_fh);
+    let mut bed_writer = bed::Writer::to_file(output).expect("Error opening BED output file");
 
     let min_slice_length = min_slice_length.unwrap_or(0);
-    let restriction_site = restriction_site.as_bytes();
+    let restriction_site = restriction_site;
 
-    // Iterate over the records in parallel with rayon and digest each one
-    reader
-        .records()
-        .par_bridge()
-        .map(|record| {
-            let record = record.unwrap();
-            let seq = record.seq();
+    let n_threads = n_threads.unwrap_or(1);
 
-            let mut digested_entry = DigestedFastaEntry::new(
-                record.id().to_string(),
-                &seq,
-                restriction_site,
-                remove_recognition_site,
-                Some(min_slice_length),
-            );
+    // Use a crossbeam channel to send raw entries
+    let (send_raw, recv_raw) = crossbeam::channel::unbounded::<fasta::Record>();
+    // Use a crossbeam channel to send digested entries
+    let (send_digested, recv_digested) = crossbeam::channel::unbounded();
 
-            digested_entry.to_bed_records()
-        })
-        .collect::<Vec<Vec<bed::Record>>>()
-        .iter()
-        .for_each(|bed_records| {
-            for bed_rec in bed_records {
-                writer.write(bed_rec).unwrap();
+    // Spawn a digestion thread
+    for i in 0..n_threads {
+        let send_digested = send_digested.clone();
+        let recv_raw = recv_raw.clone();
+        let restriction_site = restriction_site.clone();
+
+        std::thread::spawn(move || {
+            for entry in recv_raw {
+                println!("Digested entry {}", entry.id());
+
+                let sequence = entry.seq();
+                let mut digested_entry = DigestedFastaEntry::new(
+                    entry.id().to_string(),
+                    &sequence,
+                    &restriction_site.as_bytes(),
+                    remove_recognition_site,
+                    Some(min_slice_length),
+                );
+
+                let bed_records = digested_entry.to_bed_records();
+
+                match send_digested.send(bed_records) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        warn!("Error sending digested entry: {}", e);
+                    }
+                }
             }
+
+            drop(send_digested);
         });
+    }
+
+    // Spawn a writer thread
+    let writer_handle = std::thread::spawn(move || {
+        let mut n_fragments = 0;
+
+        for bed_records in recv_digested {
+            for bed_record in bed_records {
+                let mut rec = bed_record;
+                rec.set_name(&n_fragments.to_string());
+                bed_writer.write(&rec).expect("Error writing BED record");
+                n_fragments += 1;
+            }
+        }
+    });
+
+    // Read the fasta file and send the entries to the digestion thread
+    for entry in fasta_reader.records() {
+        let entry = entry.expect("Error reading FASTA entry");
+        send_raw.send(entry).unwrap();
+    }
+
+    // Close the channels
+    drop(send_raw);
+    drop(send_digested);
+
+    // Wait for the writer thread to finish
+    writer_handle.join().unwrap();
 
     Ok(())
 }
@@ -137,6 +179,7 @@ mod tests {
             restriction_site,
             output,
             remove_recognition_site,
+            None,
             None,
         )
         .unwrap();

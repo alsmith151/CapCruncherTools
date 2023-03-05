@@ -49,6 +49,7 @@ fn digest_fasta_py(
     output: String,
     remove_recognition_site: bool,
     min_slice_length: Option<usize>,
+    n_threads: Option<usize>,
 ) -> PyResult<()> {
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
@@ -60,6 +61,7 @@ fn digest_fasta_py(
         output,
         remove_recognition_site,
         min_slice_length,
+        n_threads,
     )?;
 
     Ok(())

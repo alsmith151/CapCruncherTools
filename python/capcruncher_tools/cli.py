@@ -10,7 +10,7 @@ from .capcruncher_tools import deduplicate, digest
 
 FORMAT = "%(levelname)s %(name)s %(asctime)-15s %(message)s"
 logging.basicConfig(format=FORMAT)
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)
 
 
 @click.group()
@@ -102,6 +102,12 @@ def fastq_deduplicate(*args, **kwargs):
     is_flag=True,
     default=False,
 )
+@click.option(
+    "-p",
+    "--n-threads",
+    help="Number of threads to use for digesting",
+    default=1,
+)
 def digest_genome(*args, **kwargs):
     """Digest genome with restriction enzyme and save to BED file"""
 
@@ -122,6 +128,7 @@ def digest_genome(*args, **kwargs):
         kwargs["output"],
         kwargs["remove_recognition_site"],
         kwargs["min_slice_length"],
+        kwargs["n_threads"]
     )
 
 
