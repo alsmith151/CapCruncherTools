@@ -37,6 +37,35 @@ fn deduplicate_fastq_py(
     py_deduplication_results
 }
 
+// Rust based. Digest a FASTA file with a restriction enzyme. Returns a BED file with the digested fragments.
+#[pyfunction]
+#[pyo3(
+    name = "digest_fasta",
+    text_signature = "(fasta, restriction_site, output, remove_recognition_site, min_slice_length)",
+)]
+fn digest_fasta_py(
+    fasta: String,
+    restriction_site: String,
+    output: String,
+    remove_recognition_site: bool,
+    min_slice_length: Option<usize>,
+    n_threads: Option<usize>,
+) -> PyResult<()> {
+    // Set up ctrl-c handler
+    ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
+
+    // Run the digest
+    genome_digest::digest_fasta(
+        fasta,
+        restriction_site,
+        output,
+        remove_recognition_site,
+        min_slice_length,
+        n_threads,
+    )?;
+
+    Ok(())
+}
 
 #[pymodule]
 #[pyo3(name = "capcruncher_tools")]
@@ -49,5 +78,11 @@ fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
     let deduplicate = PyModule::new(_py, "deduplicate")?;
     deduplicate.add_function(wrap_pyfunction!(deduplicate_fastq_py, m)?)?;
     m.add_submodule(deduplicate)?;
+
+    // Create a submodule
+    let digest = PyModule::new(_py, "digest")?;
+    digest.add_function(wrap_pyfunction!(digest_fasta_py, m)?)?;
+    m.add_submodule(digest)?;
+    
     Ok(())
 }
