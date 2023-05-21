@@ -1,16 +1,12 @@
-import logging
 import os
 import pathlib
 
 import click
 import pandas as pd
 import tabulate
+from loguru import logger as logging
 
 from .capcruncher_tools import deduplicate, digest
-
-FORMAT = "%(levelname)s %(name)s %(asctime)-15s %(message)s"
-logging.basicConfig(format=FORMAT)
-logging.getLogger().setLevel(logging.INFO)
 
 
 @click.group()
