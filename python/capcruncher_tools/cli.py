@@ -84,7 +84,6 @@ def fastq_deduplicate(*args, **kwargs):
     df_vis.columns = ["Stat Type", "Number of Reads"]
     print(tabulate.tabulate(df_vis, headers="keys", tablefmt="psql", showindex=False))
 
-
 @cli.command()
 @click.option("-i", "--input", help="Input fasta file", required=True)
 @click.option("-o", "--output", help="Output bed file", default="digested.bed")
@@ -130,7 +129,6 @@ def digest_genome(*args, **kwargs):
         kwargs["min_slice_length"],
         kwargs["n_threads"]
     )
-
 
 if __name__ == "__main__":
     cli()

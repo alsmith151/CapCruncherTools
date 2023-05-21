@@ -67,7 +67,6 @@ fn digest_fasta_py(
     Ok(())
 }
 
-
 #[pymodule]
 #[pyo3(name = "capcruncher_tools")]
 fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -85,6 +84,5 @@ fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
     digest.add_function(wrap_pyfunction!(digest_fasta_py, m)?)?;
     m.add_submodule(digest)?;
     
-
     Ok(())
 }
