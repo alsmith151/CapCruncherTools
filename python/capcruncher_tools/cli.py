@@ -8,6 +8,51 @@ from loguru import logger as logging
 
 from .capcruncher_tools import deduplicate, digest
 
+import click
+
+class OptionEatAll(click.Option):
+
+    def __init__(self, *args, **kwargs):
+        self.save_other_options = kwargs.pop('save_other_options', True)
+        nargs = kwargs.pop('nargs', -1)
+        assert nargs == -1, 'nargs, if set, must be -1 not {}'.format(nargs)
+        super(OptionEatAll, self).__init__(*args, **kwargs)
+        self._previous_parser_process = None
+        self._eat_all_parser = None
+
+    def add_to_parser(self, parser, ctx):
+
+        def parser_process(value, state):
+            # method to hook to the parser.process
+            done = False
+            value = [value]
+            if self.save_other_options:
+                # grab everything up to the next option
+                while state.rargs and not done:
+                    for prefix in self._eat_all_parser.prefixes:
+                        if state.rargs[0].startswith(prefix):
+                            done = True
+                    if not done:
+                        value.append(state.rargs.pop(0))
+            else:
+                # grab everything remaining
+                value += state.rargs
+                state.rargs[:] = []
+            value = tuple(value)
+
+            # call the actual process
+            self._previous_parser_process(value, state)
+
+        retval = super(OptionEatAll, self).add_to_parser(parser, ctx)
+        for name in self.opts:
+            our_parser = parser._long_opt.get(name) or parser._short_opt.get(name)
+            if our_parser:
+                self._eat_all_parser = our_parser
+                self._previous_parser_process = our_parser.process
+                our_parser.process = parser_process
+                break
+        return retval
+
 
 @click.group()
 def cli():
@@ -17,8 +62,8 @@ def cli():
 
 
 @cli.command()
-@click.option("-1", "--fastq1", help="Read 1 FASTQ files", required=True, multiple=True)
-@click.option("-2", "--fastq2", help="Read 2 FASTQ files", required=True, multiple=True)
+@click.option("-1", "--fastq1", help="Read 1 FASTQ files", required=True, cls=OptionEatAll)
+@click.option("-2", "--fastq2", help="Read 2 FASTQ files", required=True, cls=OptionEatAll)
 @click.option(
     "-o",
     "--output-prefix",
@@ -28,7 +73,7 @@ def cli():
 @click.option(
     "--sample-name", help="Name of sample e.g. DOX_treated_1", default="sampleX"
 )
-@click.option("--stats-prefix", help="Output prefix for stats file", default="stats")
+@click.option("-s", "--statistics", help="Statistics output file name", default="stats.csv")
 @click.option(
     "--shuffle",
     help="Shuffle reads before deduplication",
@@ -38,7 +83,18 @@ def cli():
 def fastq_deduplicate(*args, **kwargs):
     """Remove PCR duplicates from paired FASTQ files"""
 
-    fq_input = list(zip(kwargs["fastq1"], kwargs["fastq2"]))
+    logging.info(f"Output prefix: {kwargs['output_prefix']}")
+    logging.info(f"Sample name: {kwargs['sample_name']}")
+    logging.info(f"Stats prefix: {kwargs['statistics']}")
+    logging.info(f"Shuffle reads: {kwargs['shuffle']}")
+
+    import ast
+    
+    fq1 = ast.literal_eval(kwargs["fastq1"])
+    fq2 = ast.literal_eval(kwargs["fastq2"])
+        
+    fq_input = list(zip(fq1, fq2))
+
     fq_output = [
         (
             kwargs["output_prefix"] + os.path.basename(f1),
@@ -50,12 +106,20 @@ def fastq_deduplicate(*args, **kwargs):
     output_path = pathlib.Path(fq_output[0][0]).parent
     output_path.mkdir(parents=True, exist_ok=True)
 
+    stats_path = pathlib.Path(kwargs["statistics"])
+
+    if not stats_path.parent.exists():
+        raise ValueError(f"Statistics path {stats_path.parent} does not exist")
+    
+
+    logging.info("Running deduplication")
     deduplication_results = deduplicate.fastq_deduplicate(
         fq_input,  # Infiles
         fq_output,  # Outfiles
         kwargs["shuffle"],
     )
 
+    logging.info("Saving deduplication statistics")
     df_stats = (
         pd.Series(deduplication_results)
         .to_frame("stat")
@@ -69,8 +133,8 @@ def fastq_deduplicate(*args, **kwargs):
         )
     )
 
-    logging.info(f"Saving stats to {kwargs['stats_prefix']}.deduplication.csv")
-    df_stats.to_csv(f"{kwargs['stats_prefix']}.deduplication.csv", index=False)
+    logging.info(f"Saving stats to {stats_path}.deduplication.csv")
+    df_stats.to_csv(stats_path, index=False)
 
     logging.info("Printing deduplication statistics to stdout")
     # Print stats to stdout

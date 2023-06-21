@@ -4,6 +4,7 @@ use pythonize::pythonize;
 mod genome_digest;
 mod utils;
 mod fastq_deduplication;
+mod interactions_count;
 
 // Rust based. Deduplicate FASTQ files based on exact sequence matches. Returns a dictionary with statistics."
 #[pyfunction]
