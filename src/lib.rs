@@ -20,9 +20,9 @@ fn deduplicate_fastq_py(
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
 
-    // Get the Python GIL
-    let gil = Python::acquire_gil();
-    let py = gil.python();
+    // // Get the Python GIL
+    // let gil = Python::acquire_gil();
+    // let py = gil.python();
 
     let mut deduplicator = fastq_deduplication::FastqDeduplicator::new(
         fq_in,
@@ -34,7 +34,7 @@ fn deduplicate_fastq_py(
     let deduplication_results = deduplicator.write_unique_reads().expect("Error during deduplication");
 
     // Convert statistics to Python
-    let py_deduplication_results = pythonize(py, &deduplication_results).unwrap();
+    let py_deduplication_results = Python::with_gil(|py| pythonize(py, &deduplication_results).unwrap());
     py_deduplication_results
 }
 
@@ -84,6 +84,10 @@ fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
     let digest = PyModule::new(_py, "digest")?;
     digest.add_function(wrap_pyfunction!(digest_fasta_py, m)?)?;
     m.add_submodule(digest)?;
+
+    // Create a submodule
+    let interactions = PyModule::new(_py, "interactions")?;
+    m.add_class::<interactions_count::RestrictionFragmentCounter>()?;
     
     Ok(())
 }
