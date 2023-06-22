@@ -87,7 +87,8 @@ fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
 
     // Create a submodule
     let interactions = PyModule::new(_py, "interactions")?;
-    m.add_class::<interactions_count::RestrictionFragmentCounter>()?;
+    interactions.add_class::<interactions_count::RestrictionFragmentCounter>()?;
+    m.add_submodule(interactions)?;
     
     Ok(())
 }
