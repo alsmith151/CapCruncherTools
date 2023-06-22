@@ -5,23 +5,25 @@ import click
 import pandas as pd
 import tabulate
 from loguru import logger as logging
+from typing import Union
+import tempfile
 
-from .capcruncher_tools import deduplicate, digest
+from .capcruncher_tools import deduplicate, digest, interactions
 
 import click
+import ray
+
 
 class OptionEatAll(click.Option):
-
     def __init__(self, *args, **kwargs):
-        self.save_other_options = kwargs.pop('save_other_options', True)
-        nargs = kwargs.pop('nargs', -1)
-        assert nargs == -1, 'nargs, if set, must be -1 not {}'.format(nargs)
+        self.save_other_options = kwargs.pop("save_other_options", True)
+        nargs = kwargs.pop("nargs", -1)
+        assert nargs == -1, "nargs, if set, must be -1 not {}".format(nargs)
         super(OptionEatAll, self).__init__(*args, **kwargs)
         self._previous_parser_process = None
         self._eat_all_parser = None
 
     def add_to_parser(self, parser, ctx):
-
         def parser_process(value, state):
             # method to hook to the parser.process
             done = False
@@ -62,8 +64,12 @@ def cli():
 
 
 @cli.command()
-@click.option("-1", "--fastq1", help="Read 1 FASTQ files", required=True, cls=OptionEatAll)
-@click.option("-2", "--fastq2", help="Read 2 FASTQ files", required=True, cls=OptionEatAll)
+@click.option(
+    "-1", "--fastq1", help="Read 1 FASTQ files", required=True, cls=OptionEatAll
+)
+@click.option(
+    "-2", "--fastq2", help="Read 2 FASTQ files", required=True, cls=OptionEatAll
+)
 @click.option(
     "-o",
     "--output-prefix",
@@ -73,7 +79,9 @@ def cli():
 @click.option(
     "--sample-name", help="Name of sample e.g. DOX_treated_1", default="sampleX"
 )
-@click.option("-s", "--statistics", help="Statistics output file name", default="stats.csv")
+@click.option(
+    "-s", "--statistics", help="Statistics output file name", default="stats.csv"
+)
 @click.option(
     "--shuffle",
     help="Shuffle reads before deduplication",
@@ -89,10 +97,10 @@ def fastq_deduplicate(*args, **kwargs):
     logging.info(f"Shuffle reads: {kwargs['shuffle']}")
 
     import ast
-    
+
     fq1 = ast.literal_eval(kwargs["fastq1"])
     fq2 = ast.literal_eval(kwargs["fastq2"])
-        
+
     fq_input = list(zip(fq1, fq2))
 
     fq_output = [
@@ -110,7 +118,6 @@ def fastq_deduplicate(*args, **kwargs):
 
     if not stats_path.parent.exists():
         raise ValueError(f"Statistics path {stats_path.parent} does not exist")
-    
 
     logging.info("Running deduplication")
     deduplication_results = deduplicate.fastq_deduplicate(
@@ -144,6 +151,7 @@ def fastq_deduplicate(*args, **kwargs):
     df_vis.columns = ["Stat Type", "Number of Reads"]
     print(tabulate.tabulate(df_vis, headers="keys", tablefmt="psql", showindex=False))
 
+
 @cli.command()
 @click.option("-i", "--input", help="Input fasta file", required=True)
 @click.option("-o", "--output", help="Output bed file", default="digested.bed")
@@ -176,19 +184,161 @@ def digest_genome(*args, **kwargs):
     # remove_recognition_site: bool,
     # min_slice_length: Option<usize>,
 
-    logging.info(f"Digesting genome using recognition site: {kwargs['recognition_site']}")
-    logging.info(f"{'Keeping' if not kwargs['remove_recognition_site'] else 'Removing'} recognition site")
+    logging.info(
+        f"Digesting genome using recognition site: {kwargs['recognition_site']}"
+    )
+    logging.info(
+        f"{'Keeping' if not kwargs['remove_recognition_site'] else 'Removing'} recognition site"
+    )
     logging.info(f"Minimum slice length: {kwargs['min_slice_length']}")
     logging.info(f"Saving output to {kwargs['output']}")
-    
+
     digest.digest_fasta(
         kwargs["input"],
         kwargs["recognition_site"],
         kwargs["output"],
         kwargs["remove_recognition_site"],
         kwargs["min_slice_length"],
-        kwargs["n_threads"]
+        kwargs["n_threads"],
     )
+
+
+@ray.remote
+def _count_interactions(*args):
+    counter = interactions.RestrictionFragmentCounter(*args)
+    return counter.count_interactions().to_pandas()
+
+
+@ray.remote
+def _make_cooler(
+    output_prefix: str,
+    counts: pd.DataFrame,
+    bins: pd.DataFrame,
+    viewpoint_name: str,
+    viewpoint_path: str,
+    **kwargs,
+):
+    import capcruncher.api
+
+    return capcruncher.api.storage.create_cooler_cc(
+        output_prefix=output_prefix,
+        pixels=counts,
+        bins=bins,
+        viewpoint_name=viewpoint_name,
+        viewpoint_path=viewpoint_path,
+        **kwargs,
+    )
+
+
+
+@cli.command()
+@click.argument("reporters")
+@click.option("-o", "--output", help="Name of output file", default="CC_cooler.hdf5")
+@click.option(
+    "--remove_exclusions",
+    default=False,
+    help="Prevents analysis of fragments marked as proximity exclusions",
+    is_flag=True,
+)
+@click.option(
+    "--remove_capture",
+    default=False,
+    help="Prevents analysis of capture fragment interactions",
+    is_flag=True,
+)
+@click.option(
+    "--subsample",
+    default=0,
+    help="Subsamples reporters before analysis of interactions",
+    type=float,
+)
+@click.option(
+    "-f",
+    "--fragment-map",
+    help="Path to digested genome bed file",
+)
+@click.option(
+    "-v",
+    "--viewpoint-path",
+    help="Path to viewpoints file",
+)
+@click.option(
+    "-p",
+    "--n-cores",
+    default=1,
+    help="Number of cores to use for counting.",
+    type=int,
+)
+@click.argument("kwargs", nargs=-1, ignore_unknown_options=True)
+def count(
+    reporters: os.PathLike,
+    output: os.PathLike = "counts.hdf5",
+    remove_exclusions: bool = False,
+    remove_viewpoint: bool = False,
+    subsample: int = 0,
+    fragment_map: os.PathLike = None,
+    viewpoint_path: os.PathLike = None,
+    n_cores: int = 1,
+    **kwargs,
+):
+    """Count interactions between restriction fragments in a supplied parquet file"""
+
+    import pyranges as pr
+    import capcruncher.api.storage
+
+    ray.init(num_cpus=n_cores)
+    df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
+    viewpoints = df["viewpoint"].cat.categories.to_list()
+    viewpoint_sizes = df["viewpoint"].value_counts()
+
+    logging.info(f"Number of viewpoints: {len(viewpoints)}")
+    logging.info(f"Number of slices per viewpoint: {viewpoint_sizes.to_dict()}")
+
+    counts = []
+    for viewpoint in viewpoints:
+        logging.info(f"Processing viewpoint: {viewpoint}")
+        counts.append(
+            _count_interactions.remote(
+                reporters, viewpoint, remove_exclusions, remove_viewpoint, subsample
+            )
+        )
+
+    bins = pr.read_bed(fragment_map, as_df=True).rename(
+        columns={
+            "Chromosome": "chrom",
+            "Start": "start",
+            "End": "end",
+            "Name": "fragment_id",
+        }
+    )
+    ray.put(bins)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        coolers = []
+        while counts:
+            ready, counts = ray.wait(counts)
+            count = ray.get(ready[0])
+            coolers.append(
+                _make_cooler.remote(
+                    output_prefix=pathlib.Path(tmpdir) / f"{viewpoint}.hdf5",
+                    counts=count,
+                    bins=bins,
+                    viewpoint_name=viewpoint,
+                    viewpoint_path=viewpoint_path,
+                    **kwargs,
+                )
+            )
+
+        coolers = ray.get(coolers)
+
+        logging.info(f"Making final cooler at {output}")
+        capcruncher.api.storage.merge_coolers(coolers, output=output)
+
+
+
+
+
+
 
 if __name__ == "__main__":
     cli()
