@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 ahash = "0.8.2"
 anyhow = "*"
-bio = "1.1.0"
+bio = "1.2.0"
 crossbeam = "0.8.2"
 ctrlc = "*"
 fastq = "0.6.0"
@@ -18,10 +18,10 @@ itertools = "0.10.5"
 log = "*"
 niffler = "2.3.2"
 noodles = { version = "0.20.0", features = ["fasta"] }
-polars = {version = "*", features = ["lazy", "parquet", "partition_by"]}
+polars = {version = "0.30.0", features = ["lazy", "parquet", "partition_by"]}
 pyo3 = { version = "*", features = ["extension-module", "serde", "hashbrown"] }
 pyo3-log = "*"
-pyo3-polars="*"
+pyo3-polars="0.4.1"
 pythonize = "*"
 rand = "0.8.5"
 rayon = "*"
