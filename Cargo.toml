@@ -1,6 +1,6 @@
 [package]
 name = "capcruncher_tools"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -18,8 +18,8 @@ itertools = "0.10.5"
 log = "*"
 niffler = "2.3.2"
 noodles = { version = "0.20.0", features = ["fasta"] }
-polars = {version = "0.30.0", features = ["lazy", "parquet", "partition_by"]}
-pyo3 = { version = "*", features = ["extension-module", "serde", "hashbrown"] }
+polars = {version = "0.30.0", features = ["lazy", "parquet", "partition_by", "dtype-categorical"]}
+pyo3 = { version = "*", features = ["abi3-py37", "serde", "extension-module", "serde", "hashbrown"] }
 pyo3-log = "*"
 pyo3-polars="0.4.1"
 pythonize = "*"
@@ -41,4 +41,4 @@ name = "capcruncher_tools"
 # Downstream Rust code (including code in `bin/`, `examples/`, and `tests/`) will not be able
 # to `use string_sum;` unless the "rlib" or "lib" crate type is also included, e.g.:
 # crate-type = ["cdylib", "rlib"]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]

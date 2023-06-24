@@ -8,7 +8,7 @@ from loguru import logger as logging
 from typing import Union
 import tempfile
 
-from .capcruncher_tools import deduplicate, digest, interactions
+from .capcruncher_tools import deduplicate, digest
 
 import click
 import ray
@@ -204,9 +204,12 @@ def digest_genome(*args, **kwargs):
 
 
 @ray.remote
-def _count_interactions(*args):
-    counter = interactions.RestrictionFragmentCounter(*args)
-    return counter.count_interactions().to_pandas()
+def _count_interactions(parquet: str, viewpoint: str, remove_exclusions: bool = False, remove_viewpoint: bool = False, subsample: float = 0):
+
+    from .count import get_viewpoint, get_counts
+    df = get_viewpoint(parquet, viewpoint, remove_exclusions, remove_viewpoint, subsample)
+    counts = get_counts(df)
+    return counts
 
 
 @ray.remote
@@ -218,9 +221,9 @@ def _make_cooler(
     viewpoint_path: str,
     **kwargs,
 ):
-    import capcruncher.api
+    from capcruncher.api import storage
 
-    return capcruncher.api.storage.create_cooler_cc(
+    return storage.create_cooler_cc(
         output_prefix=output_prefix,
         pixels=counts,
         bins=bins,
@@ -228,7 +231,6 @@ def _make_cooler(
         viewpoint_path=viewpoint_path,
         **kwargs,
     )
-
 
 
 @cli.command()
@@ -269,13 +271,13 @@ def _make_cooler(
     help="Number of cores to use for counting.",
     type=int,
 )
-@click.argument("kwargs", nargs=-1, ignore_unknown_options=True)
+@click.argument("kwargs", nargs=-1)
 def count(
     reporters: os.PathLike,
     output: os.PathLike = "counts.hdf5",
     remove_exclusions: bool = False,
     remove_viewpoint: bool = False,
-    subsample: int = 0,
+    subsample: float = 0,
     fragment_map: os.PathLike = None,
     viewpoint_path: os.PathLike = None,
     n_cores: int = 1,
@@ -285,6 +287,8 @@ def count(
 
     import pyranges as pr
     import capcruncher.api.storage
+    import random
+    import string
 
     ray.init(num_cpus=n_cores)
     df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
@@ -294,12 +298,22 @@ def count(
     logging.info(f"Number of viewpoints: {len(viewpoints)}")
     logging.info(f"Number of slices per viewpoint: {viewpoint_sizes.to_dict()}")
 
+
+    if pathlib.Path(reporters).is_dir():
+        reporters = str(pathlib.Path(reporters) / "*.parquet")
+        
+
+
     counts = []
     for viewpoint in viewpoints:
         logging.info(f"Processing viewpoint: {viewpoint}")
         counts.append(
             _count_interactions.remote(
-                reporters, viewpoint, remove_exclusions, remove_viewpoint, subsample
+                parquet = f"{reporters}",
+                viewpoint = viewpoint,
+                remove_exclusions=remove_exclusions,
+                remove_viewpoint = remove_viewpoint,
+                subsample = subsample,
             )
         )
 
@@ -308,7 +322,7 @@ def count(
             "Chromosome": "chrom",
             "Start": "start",
             "End": "end",
-            "Name": "fragment_id",
+            "Name": "name",
         }
     )
     ray.put(bins)
@@ -320,24 +334,18 @@ def count(
             count = ray.get(ready[0])
             coolers.append(
                 _make_cooler.remote(
-                    output_prefix=pathlib.Path(tmpdir) / f"{viewpoint}.hdf5",
+                    output_prefix=str(pathlib.Path(tmpdir) / f"{''.join(random.choices(string.ascii_letters + string.digits, k=8))}.hdf5"),
                     counts=count,
                     bins=bins,
                     viewpoint_name=viewpoint,
                     viewpoint_path=viewpoint_path,
-                    **kwargs,
                 )
             )
 
-        coolers = ray.get(coolers)
+        coolers = [clr.split("::")[0] for clr in ray.get(coolers)]
 
         logging.info(f"Making final cooler at {output}")
         capcruncher.api.storage.merge_coolers(coolers, output=output)
-
-
-
-
-
 
 
 if __name__ == "__main__":

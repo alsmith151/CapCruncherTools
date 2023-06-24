@@ -1,4 +1,6 @@
 use pyo3::prelude::*;
+use pyo3_polars::PyDataFrame;
+use polars::prelude::*;
 use pythonize::pythonize;
 
 mod genome_digest;
@@ -68,6 +70,21 @@ fn digest_fasta_py(
     Ok(())
 }
 
+#[pyfunction]
+#[pyo3(
+    name = "count_interactions",
+    text_signature = "(df: DataFrame)",
+)]
+fn count_interactions(df: PyDataFrame) -> PyDataFrame{
+    ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
+    let df = interactions_count::count(df.into());
+    df
+}
+
+
+
+
+
 #[pymodule]
 #[pyo3(name = "capcruncher_tools")]
 fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -87,7 +104,7 @@ fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
 
     // Create a submodule
     let interactions = PyModule::new(_py, "interactions")?;
-    interactions.add_class::<interactions_count::RestrictionFragmentCounter>()?;
+    interactions.add_function(wrap_pyfunction!(count_interactions, m)?)?;
     m.add_submodule(interactions)?;
     
     Ok(())
