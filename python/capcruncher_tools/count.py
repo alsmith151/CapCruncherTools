@@ -8,8 +8,11 @@ def get_viewpoint(
     remove_exclusions: bool = False,
     remove_viewpoint: bool = False,
     subsample: float = 0,
+    low_memory: bool = False,
 ):
-    df = pl.scan_parquet(parquet).filter(pl.col("viewpoint") == viewpoint)
+    df = pl.scan_parquet(parquet, low_memory=low_memory).filter(
+        pl.col("viewpoint") == viewpoint
+    )
 
     if remove_viewpoint:
         df = df.filter(pl.col("capture_count") == 0)
@@ -17,7 +20,7 @@ def get_viewpoint(
     if remove_exclusions:
         df = df.filter(pl.col("exclusion") != pl.col("viewpoint"))
 
-    df = df.select(["parent_id", "viewpoint", "restriction_fragment"])
+    df = df.select(["parent_id", "restriction_fragment"])
 
     return df.collect()
 
