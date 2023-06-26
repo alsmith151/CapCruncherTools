@@ -27,3 +27,13 @@ This tool takes a FASTA file and a list of restriction enzymes and produces a li
 capcruncher-tools digest-genome -i <input.fasta> -o <output.bed> -r <recognition site> -p  <number of threads>
 ```
 
+
+### Count restriction fragments - count:
+
+This tool counts the number of interactions between a fragment (in silico digested read).
+
+#### Basic Usage:
+
+```bash
+capcruncher-tools count <reporters> -f <fragments.bed> -v <viewpoints_path.bed> -o <output.hdf5> -p <number of threads>
+```
