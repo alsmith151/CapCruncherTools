@@ -5,7 +5,7 @@ import click
 import pandas as pd
 import tabulate
 from loguru import logger as logging
-from typing import Union
+from typing import Union, Tuple, List
 import tempfile
 
 from .capcruncher_tools import deduplicate, digest
@@ -204,12 +204,20 @@ def digest_genome(*args, **kwargs):
 
 
 @ray.remote
-def _count_interactions(parquet: str, viewpoint: str, remove_exclusions: bool = False, remove_viewpoint: bool = False, subsample: float = 0):
-
+def _count_interactions(
+    parquet: str,
+    viewpoint: str,
+    remove_exclusions: bool = False,
+    remove_viewpoint: bool = False,
+    subsample: float = 0,
+) -> Tuple[str, pd.DataFrame]:
     from .count import get_viewpoint, get_counts
-    df = get_viewpoint(parquet, viewpoint, remove_exclusions, remove_viewpoint, subsample)
+
+    df = get_viewpoint(
+        parquet, viewpoint, remove_exclusions, remove_viewpoint, subsample
+    )
     counts = get_counts(df)
-    return counts
+    return (viewpoint, counts)
 
 
 @ray.remote
@@ -220,7 +228,7 @@ def _make_cooler(
     viewpoint_name: str,
     viewpoint_path: str,
     **kwargs,
-):
+) -> str:
     from capcruncher.api import storage
 
     return storage.create_cooler_cc(
@@ -298,22 +306,19 @@ def count(
     logging.info(f"Number of viewpoints: {len(viewpoints)}")
     logging.info(f"Number of slices per viewpoint: {viewpoint_sizes.to_dict()}")
 
-
     if pathlib.Path(reporters).is_dir():
         reporters = str(pathlib.Path(reporters) / "*.parquet")
-        
-
 
     counts = []
     for viewpoint in viewpoints:
         logging.info(f"Processing viewpoint: {viewpoint}")
         counts.append(
             _count_interactions.remote(
-                parquet = f"{reporters}",
-                viewpoint = viewpoint,
+                parquet=f"{reporters}",
+                viewpoint=viewpoint,
                 remove_exclusions=remove_exclusions,
-                remove_viewpoint = remove_viewpoint,
-                subsample = subsample,
+                remove_viewpoint=remove_viewpoint,
+                subsample=subsample,
             )
         )
 
@@ -331,10 +336,13 @@ def count(
         coolers = []
         while counts:
             ready, counts = ray.wait(counts)
-            count = ray.get(ready[0])
+            viewpoint, count = ray.get(ready[0])
             coolers.append(
                 _make_cooler.remote(
-                    output_prefix=str(pathlib.Path(tmpdir) / f"{''.join(random.choices(string.ascii_letters + string.digits, k=8))}.hdf5"),
+                    output_prefix=str(
+                        pathlib.Path(tmpdir)
+                        / f"{''.join(random.choices(string.ascii_letters + string.digits, k=8))}.hdf5"
+                    ),
                     counts=count,
                     bins=bins,
                     viewpoint_name=viewpoint,
