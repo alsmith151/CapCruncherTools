@@ -1,9 +1,12 @@
 use pyo3::prelude::*;
+use pyo3_polars::PyDataFrame;
+use polars::prelude::*;
 use pythonize::pythonize;
 
 mod genome_digest;
 mod utils;
 mod fastq_deduplication;
+mod interactions_count;
 
 // Rust based. Deduplicate FASTQ files based on exact sequence matches. Returns a dictionary with statistics."
 #[pyfunction]
@@ -19,9 +22,9 @@ fn deduplicate_fastq_py(
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
 
-    // Get the Python GIL
-    let gil = Python::acquire_gil();
-    let py = gil.python();
+    // // Get the Python GIL
+    // let gil = Python::acquire_gil();
+    // let py = gil.python();
 
     let mut deduplicator = fastq_deduplication::FastqDeduplicator::new(
         fq_in,
@@ -33,7 +36,7 @@ fn deduplicate_fastq_py(
     let deduplication_results = deduplicator.write_unique_reads().expect("Error during deduplication");
 
     // Convert statistics to Python
-    let py_deduplication_results = pythonize(py, &deduplication_results).unwrap();
+    let py_deduplication_results = Python::with_gil(|py| pythonize(py, &deduplication_results).unwrap());
     py_deduplication_results
 }
 
@@ -67,6 +70,21 @@ fn digest_fasta_py(
     Ok(())
 }
 
+#[pyfunction]
+#[pyo3(
+    name = "count_interactions",
+    text_signature = "(df: DataFrame)",
+)]
+fn count_interactions(df: PyDataFrame) -> PyDataFrame{
+    ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
+    let df = interactions_count::count(df.into());
+    df
+}
+
+
+
+
+
 #[pymodule]
 #[pyo3(name = "capcruncher_tools")]
 fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -83,6 +101,11 @@ fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
     let digest = PyModule::new(_py, "digest")?;
     digest.add_function(wrap_pyfunction!(digest_fasta_py, m)?)?;
     m.add_submodule(digest)?;
+
+    // Create a submodule
+    let interactions = PyModule::new(_py, "interactions")?;
+    interactions.add_function(wrap_pyfunction!(count_interactions, m)?)?;
+    m.add_submodule(interactions)?;
     
     Ok(())
 }

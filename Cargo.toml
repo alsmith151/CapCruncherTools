@@ -1,31 +1,33 @@
 [package]
 name = "capcruncher_tools"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-niffler = "2.3.2"
+ahash = "0.8.2"
+anyhow = "*"
+bio = "1.2.0"
+crossbeam = "0.8.2"
+ctrlc = "*"
 fastq = "0.6.0"
 hashbrown = {version = "*", features = ["rayon"]}
-ahash = "0.8.2"
-rayon = "*"
-rand = "0.8.5"
-pyo3 = { version = "0.16.*", features = ["extension-module", "serde", "hashbrown"] }
-pythonize = "*"
-serde = { version = "1.*", features = ["derive"] }
-twox-hash = "1.6.2"
-tempfile = "3.3.0"
-pyo3-log = "0.6.*"
-log = "*"
-ctrlc = "*"
 indicatif = {version = "*", features = ["rayon"]}
-noodles = { version = "0.20.0", features = ["fasta"] }
-bio = "1.1.0"
 itertools = "0.10.5"
-crossbeam = "0.8.2"
-
+log = "*"
+niffler = "2.3.2"
+noodles = { version = "0.20.0", features = ["fasta"] }
+polars = {version = "0.30.0", features = ["lazy", "parquet", "partition_by", "dtype-categorical"]}
+pyo3 = { version = "*", features = ["abi3-py37", "serde", "extension-module", "serde", "hashbrown"] }
+pyo3-log = "*"
+pyo3-polars="0.4.1"
+pythonize = "*"
+rand = "0.8.5"
+rayon = "*"
+serde = { version = "1.*", features = ["derive"] }
+tempfile = "3.3.0"
+twox-hash = "1.6.2"
 
 
 [lib]
@@ -39,4 +41,4 @@ name = "capcruncher_tools"
 # Downstream Rust code (including code in `bin/`, `examples/`, and `tests/`) will not be able
 # to `use string_sum;` unless the "rlib" or "lib" crate type is also included, e.g.:
 # crate-type = ["cdylib", "rlib"]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
