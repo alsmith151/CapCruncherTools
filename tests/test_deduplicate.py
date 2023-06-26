@@ -54,7 +54,7 @@ def test_fastq_duplicate_removal(
         assert os.path.exists(fn)
 
     # Check that the number of duplicates is as expected
-    stats_fn = "stats.deduplication.csv"
+    stats_fn = "stats.csv"
     df_stats = pd.read_csv(stats_fn)
     n_duplicates = df_stats.query("stat_type == 'read_pairs_duplicated'").loc[:, "stat"].values[0]
     assert n_duplicates == n_duplicates_expected
