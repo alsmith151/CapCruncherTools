@@ -9,6 +9,8 @@ from typing import Union, Tuple, List
 import tempfile
 
 from .capcruncher_tools import deduplicate, digest
+from .count import count_interactions, make_cooler
+
 
 import click
 import ray
@@ -203,44 +205,6 @@ def digest_genome(*args, **kwargs):
     )
 
 
-@ray.remote
-def _count_interactions(
-    parquet: str,
-    viewpoint: str,
-    remove_exclusions: bool = False,
-    remove_viewpoint: bool = False,
-    subsample: float = 0,
-) -> Tuple[str, pd.DataFrame]:
-    from .count import get_viewpoint, get_counts
-
-    df = get_viewpoint(
-        parquet, viewpoint, remove_exclusions, remove_viewpoint, subsample
-    )
-    counts = get_counts(df)
-    return (viewpoint, counts)
-
-
-@ray.remote
-def _make_cooler(
-    output_prefix: str,
-    counts: pd.DataFrame,
-    bins: pd.DataFrame,
-    viewpoint_name: str,
-    viewpoint_path: str,
-    **kwargs,
-) -> str:
-    from capcruncher.api import storage
-
-    return storage.create_cooler_cc(
-        output_prefix=output_prefix,
-        pixels=counts,
-        bins=bins,
-        viewpoint_name=viewpoint_name,
-        viewpoint_path=viewpoint_path,
-        **kwargs,
-    )
-
-
 @cli.command()
 @click.argument("reporters")
 @click.option("-o", "--output", help="Name of output file", default="CC_cooler.hdf5")
@@ -298,29 +262,72 @@ def count(
     import random
     import string
 
-    ray.init(num_cpus=n_cores)
+
+    reporters_path = pathlib.Path(reporters)
     df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
     viewpoints = df["viewpoint"].cat.categories.to_list()
     viewpoint_sizes = df["viewpoint"].value_counts()
+    viewpoint_sizes_dict = viewpoint_sizes.to_dict()
 
     logging.info(f"Number of viewpoints: {len(viewpoints)}")
-    logging.info(f"Number of slices per viewpoint: {viewpoint_sizes.to_dict()}")
+    logging.info(f"Number of slices per viewpoint: {viewpoint_sizes_dict}")
 
-    if pathlib.Path(reporters).is_dir():
-        reporters = str(pathlib.Path(reporters) / "*.parquet")
-
-    counts = []
-    for viewpoint in viewpoints:
-        logging.info(f"Processing viewpoint: {viewpoint}")
-        counts.append(
-            _count_interactions.remote(
-                parquet=f"{reporters}",
-                viewpoint=viewpoint,
-                remove_exclusions=remove_exclusions,
-                remove_viewpoint=remove_viewpoint,
-                subsample=subsample,
-            )
+    if any([vp for vp in viewpoint_sizes_dict.values() if vp > 2e6]):
+        logging.warning(
+            "High number of slices per viewpoint detected. Switching to low memory mode"
         )
+        low_memory = True
+
+        if pathlib.Path(reporters).is_dir():
+            reporters = str(pathlib.Path(reporters) / "*.parquet")
+    else:
+        low_memory = False
+
+
+
+
+    if low_memory and reporters_path.is_dir():
+        reporters = reporters_path.glob("*.parquet")
+    elif not low_memory and reporters_path.is_dir():
+        reporters = str(reporters_path / "*.parquet")
+    elif low_memory and reporters_path.is_file():
+        raise ValueError(
+            f"Path {reporters} is a file. Please supply a directory of parquet files for low memory mode"
+        )
+    
+    ray.init(num_cpus=n_cores)
+    counts = []
+    
+    if not low_memory: # If not low memory, use ray to parallelize counting between viewpoints
+
+        for viewpoint in viewpoints:
+            logging.info(f"Processing viewpoint: {viewpoint}")
+            counts.append(
+                count_interactions.remote(
+                    parquet=f"{reporters}",
+                    viewpoint=viewpoint,
+                    remove_exclusions=remove_exclusions,
+                    remove_viewpoint=remove_viewpoint,
+                    subsample=subsample,
+                )
+            )
+    
+    else: # If low memory, count each partition of the parquet file separately
+
+        for viewpoint in viewpoints:
+            logging.info(f"Processing viewpoint: {viewpoint}")
+            for reporter in reporters:
+                counts.append(
+                    count_interactions.remote(
+                        parquet=f"{reporter}",
+                        viewpoint=viewpoint,
+                        remove_exclusions=remove_exclusions,
+                        remove_viewpoint=remove_viewpoint,
+                        subsample=subsample,
+                        low_memory=low_memory,
+                    )
+                )
+            
 
     bins = pr.read_bed(fragment_map, as_df=True).rename(
         columns={
@@ -338,7 +345,7 @@ def count(
             ready, counts = ray.wait(counts)
             viewpoint, count = ray.get(ready[0])
             coolers.append(
-                _make_cooler.remote(
+                make_cooler.remote(
                     output_prefix=str(
                         pathlib.Path(tmpdir)
                         / f"{''.join(random.choices(string.ascii_letters + string.digits, k=8))}.hdf5"
