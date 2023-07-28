@@ -262,7 +262,6 @@ def count(
     import random
     import string
 
-
     reporters_path = pathlib.Path(reporters)
     df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
     viewpoints = df["viewpoint"].cat.categories.to_list()
@@ -283,9 +282,6 @@ def count(
     else:
         low_memory = False
 
-
-
-
     if low_memory and reporters_path.is_dir():
         reporters = reporters_path.glob("*.parquet")
     elif not low_memory and reporters_path.is_dir():
@@ -294,12 +290,13 @@ def count(
         raise ValueError(
             f"Path {reporters} is a file. Please supply a directory of parquet files for low memory mode"
         )
-    
+
     ray.init(num_cpus=n_cores)
     counts = []
-    
-    if not low_memory: # If not low memory, use ray to parallelize counting between viewpoints
 
+    if (
+        not low_memory
+    ):  # If not low memory, use ray to parallelize counting between viewpoints
         for viewpoint in viewpoints:
             logging.info(f"Processing viewpoint: {viewpoint}")
             counts.append(
@@ -311,9 +308,8 @@ def count(
                     subsample=subsample,
                 )
             )
-    
-    else: # If low memory, count each partition of the parquet file separately
 
+    else:  # If low memory, count each partition of the parquet file separately
         for viewpoint in viewpoints:
             logging.info(f"Processing viewpoint: {viewpoint}")
             for reporter in reporters:
@@ -327,7 +323,6 @@ def count(
                         low_memory=low_memory,
                     )
                 )
-            
 
     bins = pr.read_bed(fragment_map, as_df=True).rename(
         columns={
