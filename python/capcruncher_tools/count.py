@@ -29,11 +29,13 @@ def get_viewpoint(
     return df.collect()
 
 
-def get_counts(df: pl.DataFrame):
+def get_counts(df: pl.DataFrame, as_pandas: bool = True) -> pd.DataFrame:
     from capcruncher_tools import interactions
 
     counts = interactions.count_interactions(df)
-    return counts.to_pandas()
+    if as_pandas:
+        counts = counts.to_pandas()
+    return counts
 
 
 @ray.remote
@@ -48,9 +50,33 @@ def count_interactions(
     from .count import get_viewpoint, get_counts
 
     df = get_viewpoint(
-        parquet, viewpoint, remove_exclusions, remove_viewpoint, subsample, low_memory
+        parquet,
+        viewpoint,
+        remove_exclusions,
+        remove_viewpoint,
+        subsample,
+        low_memory=low_memory,
     )
-    counts = get_counts(df)
+
+    if low_memory:
+        # Break up the dataframe into chunks of 1e6 rows
+        # and aggregate the counts for each chunk
+        counts = []
+
+        # Iterate over 1e6 row chunks
+        for i in range(int(df.shape[0] / 1e6) + 1):
+            start = int(i * 1e6)
+            end = int(min(((i + 1) * 1e6), df.shape[0]))
+            # Get counts for chunk
+            counts.append(get_counts(df[start:end], as_pandas=False))
+
+        counts = pl.concat(counts)
+        counts = counts.groupby(["bin1_id", "bin2_id"]).agg(pl.sum("count"))
+        counts = counts.to_pandas()
+
+    else:
+        counts = get_counts(df)
+
     return (viewpoint, counts)
 
 
