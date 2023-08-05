@@ -17,7 +17,7 @@ requires = [
     "setuptools >= 61.0",
     "wheel",
     "setuptools_scm[toml]>=6.2",
-    "capcruncher@git+https://github.com/sims-lab/CapCruncher.git#egg=capcruncher",
+    "capcruncher>=0.3.1",
 ]
 
 [tool.maturin]
