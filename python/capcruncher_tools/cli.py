@@ -5,7 +5,7 @@ import click
 import pandas as pd
 import tabulate
 from loguru import logger as logging
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Literal
 import tempfile
 
 from .capcruncher_tools import deduplicate, digest
@@ -243,7 +243,7 @@ def digest_genome(*args, **kwargs):
     help="Number of cores to use for counting.",
     type=int,
 )
-@click.argument("kwargs", nargs=-1)
+@click.option("--assay", type=click.Choice(["capture", "tri", "tiled"]))
 def count(
     reporters: os.PathLike,
     output: os.PathLike = "counts.hdf5",
@@ -253,6 +253,7 @@ def count(
     fragment_map: os.PathLike = None,
     viewpoint_path: os.PathLike = None,
     n_cores: int = 1,
+    assay: Literal["capture", "tri", "tiled"] = "capture",
     **kwargs,
 ):
     """Count interactions between restriction fragments in a supplied parquet file"""
@@ -291,7 +292,7 @@ def count(
             f"Path {reporters} is a file. Please supply a directory of parquet files for low memory mode"
         )
 
-    ray.init(num_cpus=n_cores)
+    ray.init(num_cpus=n_cores, ignore_reinit_error=True)
     counts = []
 
     if (
