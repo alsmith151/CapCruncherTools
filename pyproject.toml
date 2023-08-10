@@ -16,7 +16,6 @@ requires = [
     "maturin>=0.14",
     "setuptools>=61.0",
     "wheel",
-    "setuptools_scm[toml]>=6.2",
 ]
 
 [tool.maturin]
