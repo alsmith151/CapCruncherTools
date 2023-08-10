@@ -42,6 +42,9 @@ def test_count(data_path, assay):
                 assay,
             ],
         )
+
+        if result.exit_code != 0:
+            print(result.stdout)
         assert result.exit_code == 0
 
         # Check that output file exists

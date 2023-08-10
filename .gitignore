@@ -1,2 +1,5 @@
-/target
+target/*
 Cargo.lock
+*.pyc
+*.abi3*
+.snakemake*

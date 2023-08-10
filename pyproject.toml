@@ -14,15 +14,16 @@ license = { file = "LICENSE" }
 build-backend = "maturin"
 requires = [
     "maturin>=0.14",
-    "setuptools >= 61.0",
+    "setuptools>=61.0",
     "wheel",
-    "setuptools_scm[toml]>=6.2",
-    "capcruncher>=0.3.1",
+    "patchelf",
 ]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"
+profile = "release"
+compatibility = "linux"
 
 [package.metadata.maturin]
 name = "capcruncher_tools.capcruncher_tools_rs"
