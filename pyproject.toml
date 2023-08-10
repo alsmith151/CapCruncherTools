@@ -16,11 +16,14 @@ requires = [
     "maturin>=0.14",
     "setuptools>=61.0",
     "wheel",
+    "patchelf",
 ]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"
+profile = "release"
+compatibility = "linux"
 
 [package.metadata.maturin]
 name = "capcruncher_tools.capcruncher_tools_rs"
