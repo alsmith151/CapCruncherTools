@@ -243,7 +243,7 @@ def digest_genome(*args, **kwargs):
     help="Number of cores to use for counting.",
     type=int,
 )
-@click.option("--assay", type=click.Choice(["capture", "tri", "tiled"]))
+@click.option("--assay", type=click.Choice(["capture", "tri", "tiled"]), default="capture")
 def count(
     reporters: os.PathLike,
     output: os.PathLike = "counts.hdf5",
@@ -350,6 +350,7 @@ def count(
                     bins=bins,
                     viewpoint_name=viewpoint,
                     viewpoint_path=viewpoint_path,
+                    assay=assay
                 )
             )
 

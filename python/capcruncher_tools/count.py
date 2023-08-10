@@ -1,9 +1,9 @@
 import pathlib
 import polars as pl
 import ray
-from typing import Tuple
+from typing import Tuple, Literal
 import pandas as pd
-from capcruncher.api import storage
+import capcruncher.api as cc
 
 
 def get_viewpoint(
@@ -87,13 +87,15 @@ def make_cooler(
     bins: pd.DataFrame,
     viewpoint_name: str,
     viewpoint_path: str,
+    assay: Literal["capture", "tri", "tiled"],
     **kwargs,
 ) -> str:
-    return storage.create_cooler_cc(
+    return cc.storage.create_cooler_cc(
         output_prefix=output_prefix,
         pixels=counts,
         bins=bins,
         viewpoint_name=viewpoint_name,
         viewpoint_path=viewpoint_path,
+
         **kwargs,
     )
