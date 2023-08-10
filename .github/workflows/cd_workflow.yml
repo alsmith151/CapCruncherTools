@@ -29,7 +29,7 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist
           sccache: 'true'
-          manylinux: 2014
+          manylinux: auto
       - name: Upload wheels
         uses: actions/upload-artifact@v3
         with:
@@ -58,7 +58,6 @@ jobs:
             set -e
             pip3 install capcruncher-tools --find-links dist --force-reinstall
             pytest
-
   sdist:
     runs-on: ubuntu-latest
     steps:
