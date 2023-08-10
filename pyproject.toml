@@ -23,7 +23,6 @@ requires = [
 features = ["pyo3/extension-module"]
 python-source = "python"
 profile = "release"
-compatibility = "linux"
 
 [package.metadata.maturin]
 name = "capcruncher_tools.capcruncher_tools_rs"
