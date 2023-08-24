@@ -14,7 +14,7 @@ pub fn count(df: DataFrame) -> PyDataFrame {
 
 
     let interaction_counts: HashMap<(i64, i64), i32> = df
-        .partition_by(vec!["parent_id"])
+        .partition_by(vec!["parent_id"], false)
         .expect("couldnt partition by parent_id")
         .into_iter()
         .map(|df| {

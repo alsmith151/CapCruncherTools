@@ -1,22 +1,32 @@
 import pathlib
+from typing import List, Literal, Tuple, Union
+
+import capcruncher.api as cc
+import pandas as pd
 import polars as pl
 import ray
-from typing import Tuple, Literal
-import pandas as pd
-import capcruncher.api as cc
+
+pl.enable_string_cache(True)
 
 
 def get_viewpoint(
     parquet: pathlib.Path,
     viewpoint: str,
+    part: Union[str, int] = None,
     remove_exclusions: bool = False,
     remove_viewpoint: bool = False,
     subsample: float = 0,
-    low_memory: bool = False,
+    scan_low_memory: bool = False,
 ) -> pl.DataFrame:
-    df = pl.scan_parquet(parquet, low_memory=low_memory).filter(
-        pl.col("viewpoint") == viewpoint
-    )
+    if not part:
+        df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
+            pl.col("viewpoint") == viewpoint
+        )
+
+    else:
+        df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
+            (pl.col("viewpoint") == viewpoint) & (pl.col("bam") == part)
+        )
 
     if remove_viewpoint:
         df = df.filter(pl.col("capture_count") == 0)
@@ -46,35 +56,46 @@ def count_interactions(
     remove_viewpoint: bool = False,
     subsample: float = 0,
     low_memory: bool = False,
+    partitions: List[str] = None,
 ) -> Tuple[str, pd.DataFrame]:
-    from .count import get_viewpoint, get_counts
-
-    df = get_viewpoint(
-        parquet,
-        viewpoint,
-        remove_exclusions,
-        remove_viewpoint,
-        subsample,
-        low_memory=low_memory,
-    )
+    from .count import get_counts, get_viewpoint
 
     if low_memory:
-        # Break up the dataframe into chunks of 1e6 rows
-        # and aggregate the counts for each chunk
+        # Check that partitions are specified
+        assert (
+            partitions is not None
+        ), "partitions must be specified when using low_memory"
+
+        # Get counts for each partition
         counts = []
+        for partition in partitions:
+            df = get_viewpoint(
+                parquet=parquet,
+                viewpoint=viewpoint,
+                remove_exclusions=remove_exclusions,
+                remove_viewpoint=remove_viewpoint,
+                subsample=subsample,
+                scan_low_memory=True,
+                part=partition,
+            )
 
-        # Iterate over 1e6 row chunks
-        for i in range(int(df.shape[0] / 1e6) + 1):
-            start = int(i * 1e6)
-            end = int(min(((i + 1) * 1e6), df.shape[0]))
-            # Get counts for chunk
-            counts.append(get_counts(df[start:end], as_pandas=False))
+            count = get_counts(df, as_pandas=False)
+            counts.append(count)
 
+        # Combine counts
         counts = pl.concat(counts)
         counts = counts.groupby(["bin1_id", "bin2_id"]).agg(pl.sum("count"))
         counts = counts.to_pandas()
 
     else:
+        df = get_viewpoint(
+            parquet=parquet,
+            viewpoint=viewpoint,
+            remove_exclusions=remove_exclusions,
+            remove_viewpoint=remove_viewpoint,
+            subsample=subsample,
+            scan_low_memory=False,
+        )
         counts = get_counts(df)
 
     return (viewpoint, counts)
@@ -83,19 +104,20 @@ def count_interactions(
 @ray.remote
 def make_cooler(
     output_prefix: str,
-    counts: pd.DataFrame,
+    future: "ray.ObjectRef",
     bins: pd.DataFrame,
-    viewpoint_name: str,
     viewpoint_path: str,
     assay: Literal["capture", "tri", "tiled"],
     **kwargs,
 ) -> str:
+    viewpoint_name, counts = future
+
     return cc.storage.create_cooler_cc(
         output_prefix=output_prefix,
         pixels=counts,
         bins=bins,
         viewpoint_name=viewpoint_name,
         viewpoint_path=viewpoint_path,
-
+        assay=assay,
         **kwargs,
     )
