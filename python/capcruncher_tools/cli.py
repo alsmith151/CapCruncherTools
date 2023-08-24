@@ -262,68 +262,54 @@ def count(
     import capcruncher.api.storage
     import random
     import string
-
-    reporters_path = pathlib.Path(reporters)
+    
     df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
+    
+    # Extract the viewpoint names and sizes from the parquet file
     viewpoints = df["viewpoint"].cat.categories.to_list()
     viewpoint_sizes = df["viewpoint"].value_counts()
-    viewpoint_sizes_dict = viewpoint_sizes.to_dict()
+    viewpoint_sizes_dict = viewpoint_sizes.to_dict() 
+    
 
     logging.info(f"Number of viewpoints: {len(viewpoints)}")
     logging.info(f"Number of slices per viewpoint: {viewpoint_sizes_dict}")
 
+    # If any viewpoint has more than 2 million slices, switch to low memory mode
     if any([vp for vp in viewpoint_sizes_dict.values() if vp > 2e6]):
         logging.warning(
             "High number of slices per viewpoint detected. Switching to low memory mode"
         )
         low_memory = True
-
-        if pathlib.Path(reporters).is_dir():
-            reporters = str(pathlib.Path(reporters) / "*.parquet")
+        
+        # Extract the partitions used to generate the file
+        df = pd.read_parquet(reporters, engine="pyarrow", columns=["bam"])
+        partitions = df["bam"].cat.categories.to_list()   
+        
     else:
         low_memory = False
 
-    if low_memory and reporters_path.is_dir():
-        reporters = reporters_path.glob("*.parquet")
-    elif not low_memory and reporters_path.is_dir():
-        reporters = str(reporters_path / "*.parquet")
-    elif low_memory and reporters_path.is_file():
-        raise ValueError(
-            f"Path {reporters} is a file. Please supply a directory of parquet files for low memory mode"
-        )
-
     ray.init(num_cpus=n_cores, ignore_reinit_error=True)
+    
+    reporters_path = pathlib.Path(reporters)
+    if reporters_path.is_dir():
+        reporters = str(reporters_path / "*.parquet")
+    
     counts = []
-
-    if (
-        not low_memory
-    ):  # If not low memory, use ray to parallelize counting between viewpoints
-        for viewpoint in viewpoints:
-            logging.info(f"Processing viewpoint: {viewpoint}")
-            counts.append(
+    for viewpoint in viewpoints:
+        logging.info(f"Setting up viewpoint: {viewpoint}")
+        
+        counts.append(
                 count_interactions.remote(
                     parquet=f"{reporters}",
                     viewpoint=viewpoint,
                     remove_exclusions=remove_exclusions,
                     remove_viewpoint=remove_viewpoint,
                     subsample=subsample,
+                    low_memory=low_memory,
+                    partitions=partitions if low_memory else None,
                 )
             )
-
-    else:  # If low memory, count each partition of the parquet file separately
-        for viewpoint in viewpoints:
-            logging.info(f"Processing viewpoint: {viewpoint}")
-            for reporter in reporters:
-                counts.append(
-                    count_interactions.remote(
-                        parquet=f"{reporter}",
-                        viewpoint=viewpoint,
-                        remove_exclusions=remove_exclusions,
-                        remove_viewpoint=remove_viewpoint,
-                        subsample=subsample,
-                        low_memory=low_memory,
-                    )
-                )
+                
 
     bins = pr.read_bed(fragment_map, as_df=True).rename(
         columns={
@@ -333,27 +319,24 @@ def count(
             "Name": "name",
         }
     )
-    ray.put(bins)
+    bins_ref = ray.put(bins)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         coolers = []
-        while counts:
-            ready, counts = ray.wait(counts)
-            viewpoint, count = ray.get(ready[0])
+        for count_future in counts:
             coolers.append(
                 make_cooler.remote(
                     output_prefix=str(
                         pathlib.Path(tmpdir)
                         / f"{''.join(random.choices(string.ascii_letters + string.digits, k=8))}.hdf5"
                     ),
-                    counts=count,
-                    bins=bins,
-                    viewpoint_name=viewpoint,
+                    future=count_future,
+                    bins=bins_ref,
                     viewpoint_path=viewpoint_path,
                     assay=assay
                 )
             )
-
+ 
         coolers = [clr.split("::")[0] for clr in ray.get(coolers)]
 
         logging.info(f"Making final cooler at {output}")

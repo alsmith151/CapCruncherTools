@@ -17,11 +17,11 @@ indicatif = {version = "*", features = ["rayon"]}
 itertools = "0.10.5"
 log = "*"
 niffler = "2.3.2"
-noodles = { version = "0.20.0", features = ["fasta"] }
-polars = {version = "0.30.0", features = ["lazy", "parquet", "partition_by", "dtype-categorical"]}
+noodles = { version = "0.20.0", features = ["fasta", "bam"] }
+polars = {version = "0.32.0", features = ["lazy", "parquet", "partition_by", "dtype-categorical"]}
 pyo3 = { version = "*", features = ["abi3-py37", "serde", "extension-module", "serde", "hashbrown"] }
 pyo3-log = "*"
-pyo3-polars="0.4.1"
+pyo3-polars = "0.6.0"
 pythonize = "*"
 rand = "0.8.5"
 rayon = "*"
