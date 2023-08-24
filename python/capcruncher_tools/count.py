@@ -1,9 +1,12 @@
 import pathlib
+from typing import List, Literal, Tuple, Union
+
+import capcruncher.api as cc
+import pandas as pd
 import polars as pl
 import ray
-from typing import Tuple, Literal, List, Union
-import pandas as pd
-import capcruncher.api as cc
+
+pl.enable_string_cache(True)
 
 
 def get_viewpoint(
@@ -55,7 +58,7 @@ def count_interactions(
     low_memory: bool = False,
     partitions: List[str] = None,
 ) -> Tuple[str, pd.DataFrame]:
-    from .count import get_viewpoint, get_counts
+    from .count import get_counts, get_viewpoint
 
     if low_memory:
         # Check that partitions are specified
@@ -107,8 +110,6 @@ def make_cooler(
     assay: Literal["capture", "tri", "tiled"],
     **kwargs,
 ) -> str:
-    
-
     viewpoint_name, counts = future
 
     return cc.storage.create_cooler_cc(
