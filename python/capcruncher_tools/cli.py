@@ -262,8 +262,6 @@ def count(
     import capcruncher.api.storage
     import random
     import string
-
-    reporters_path = pathlib.Path(reporters)
     
     df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
     
@@ -291,6 +289,10 @@ def count(
         low_memory = False
 
     ray.init(num_cpus=n_cores, ignore_reinit_error=True)
+    
+    reporters_path = pathlib.Path(reporters)
+    if reporters_path.is_dir():
+        reporters = str(reporters_path / "*.parquet")
     
     counts = []
     for viewpoint in viewpoints:

@@ -9,20 +9,20 @@ import capcruncher.api as cc
 def get_viewpoint(
     parquet: pathlib.Path,
     viewpoint: str,
-    partition: Union[str, int] = None,
+    part: Union[str, int] = None,
     remove_exclusions: bool = False,
     remove_viewpoint: bool = False,
     subsample: float = 0,
     scan_low_memory: bool = False,
 ) -> pl.DataFrame:
-    if not partition:
+    if not part:
         df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
             pl.col("viewpoint") == viewpoint
         )
 
     else:
         df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
-            (pl.col("viewpoint") == viewpoint) & (pl.col("bam") == partition)
+            (pl.col("viewpoint") == viewpoint) & (pl.col("bam") == part)
         )
 
     if remove_viewpoint:
@@ -67,13 +67,13 @@ def count_interactions(
         counts = []
         for partition in partitions:
             df = get_viewpoint(
-                parquet,
-                viewpoint,
-                remove_exclusions,
-                remove_viewpoint,
-                subsample,
+                parquet=parquet,
+                viewpoint=viewpoint,
+                remove_exclusions=remove_exclusions,
+                remove_viewpoint=remove_viewpoint,
+                subsample=subsample,
                 scan_low_memory=True,
-                partition=partition,
+                part=partition,
             )
 
             count = get_counts(df, as_pandas=False)
@@ -86,11 +86,11 @@ def count_interactions(
 
     else:
         df = get_viewpoint(
-            parquet,
-            viewpoint,
-            remove_exclusions,
-            remove_viewpoint,
-            subsample,
+            parquet=parquet,
+            viewpoint=viewpoint,
+            remove_exclusions=remove_exclusions,
+            remove_viewpoint=remove_viewpoint,
+            subsample=subsample,
             scan_low_memory=False,
         )
         counts = get_counts(df)
@@ -108,8 +108,9 @@ def make_cooler(
     **kwargs,
 ) -> str:
     
-    viewpoint_name, counts = ray.get(future)
-    
+
+    viewpoint_name, counts = future
+
     return cc.storage.create_cooler_cc(
         output_prefix=output_prefix,
         pixels=counts,
