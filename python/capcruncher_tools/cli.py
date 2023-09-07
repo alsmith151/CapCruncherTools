@@ -355,7 +355,7 @@ def count(
                     pbar.update(1)
 
         logging.info(f"Making final cooler at {output}")
-        capcruncher.api.storage.merge_coolers(cooler_refs, output=output)
+        capcruncher.api.storage.merge_coolers(coolers, output=output)
 
 
 if __name__ == "__main__":
