@@ -7,6 +7,8 @@ mod genome_digest;
 mod utils;
 mod fastq_deduplication;
 mod interactions_count;
+mod alignment;
+mod fastq_digest;
 
 // Rust based. Deduplicate FASTQ files based on exact sequence matches. Returns a dictionary with statistics."
 #[pyfunction]
