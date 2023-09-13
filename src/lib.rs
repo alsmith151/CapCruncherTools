@@ -86,7 +86,7 @@ fn digest_fastq_py(
     read_type: String,
     sample: String,
     min_slice_length: Option<usize>,
-) -> PyResult<PyDataFrame> {
+) -> PyResult<(PyDataFrame, PyDataFrame, PyDataFrame, PyDataFrame)> {
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
 
@@ -101,10 +101,42 @@ fn digest_fastq_py(
     );
 
     match res {
-        Result::Ok(stats) => {
-            let df = stats.to_dataframe();
-            let df_py = PyDataFrame(df);
-            Result::Ok(df_py)
+        Result::Ok((read_stats, hist_unfilt, hist_filt, hist_len)) => {
+            // Create a DataFrame with the read statistics
+            let df_read = read_stats.to_dataframe();
+            let df_read_py = PyDataFrame(df_read);
+
+            // Create a DataFrame with the unfiltered histogram
+            let df_hist_unfilt = hist_unfilt
+                .iter()
+                .map(|h| h.to_dataframe(Some("slice_number")))
+                .reduce(|a, b| a.vstack(&b).unwrap())
+                .expect("Error during histogram creation");
+            let df_hist_unfilt_py = PyDataFrame(df_hist_unfilt);
+
+            // Create a DataFrame with the filtered histogram
+            let df_hist_filt = hist_filt
+                .iter()
+                .map(|h| h.to_dataframe(Some("slice_number")))
+                .reduce(|a, b| a.vstack(&b).unwrap())
+                .expect("Error during histogram creation");
+            let df_hist_filt_py = PyDataFrame(df_hist_filt);
+
+            // Create a DataFrame with the length histogram
+            let df_hist_len = hist_len
+                .iter()
+                .map(|h| h.to_dataframe(Some("slice_length")))
+                .reduce(|a, b| a.vstack(&b).unwrap())
+                .expect("Error during histogram creation");
+            let df_hist_len_py = PyDataFrame(df_hist_len);
+
+            // Return a tuple of the DataFrames
+            Result::Ok((
+                df_read_py,
+                df_hist_unfilt_py,
+                df_hist_filt_py,
+                df_hist_len_py,
+            ))
         }
         Err(e) => {
             println!("Error: {}", e);

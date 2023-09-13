@@ -7,15 +7,92 @@ use log::{debug, info, warn};
 use polars::prelude::*;
 use rand::prelude::*;
 use rayon::prelude::*;
-use std::thread;
+use std::collections::HashMap;
+use std::ops::Add;
+use std::{hash::Hash, thread};
 use strum::{Display, EnumString};
 
 use crate::utils::{get_fastq_writer_file_handles, get_file_handles};
 
-#[derive(Debug, Clone, EnumString, Display)]
+#[derive(Debug, Clone, EnumString, Display, PartialEq)]
 pub enum ReadType {
     Flashed,
     Pe,
+}
+
+#[derive(Debug, Clone, EnumString, Display)]
+pub enum ReadNumber {
+    One,
+    Two,
+}
+
+#[derive(Debug, Clone)]
+pub struct DigestionHistogram {
+    sample: String,
+    read_type: ReadType,
+    read_number: ReadNumber,
+    histogram: HashMap<u64, u64>,
+}
+
+impl DigestionHistogram {
+    pub fn new(sample: String, read_type: ReadType, read_number: ReadNumber) -> Self {
+        Self {
+            sample,
+            read_type,
+            read_number,
+            histogram: HashMap::new(),
+        }
+    }
+
+    pub fn add_entry(&mut self, slice_number: u64) {
+        *self.histogram.entry(slice_number).or_insert(0) += 1;
+    }
+
+    pub fn to_dataframe(&self, description: Option<&str>) -> DataFrame {
+        let sample = vec![self.sample.clone(); self.histogram.len()];
+        let read_type = vec![self.read_type.to_string(); self.histogram.len()];
+        let read_number = vec![self.read_number.to_string(); self.histogram.len()];
+
+        let df = DataFrame::new(vec![
+            Series::new("sample", &sample),
+            Series::new("read_type", &read_type),
+            Series::new("read_number", &read_number),
+            Series::new(
+                &description.unwrap_or("slice_number"),
+                &self.histogram.keys().map(|x| *x as i64).collect::<Vec<_>>(),
+            ),
+            Series::new(
+                "count",
+                &self
+                    .histogram
+                    .values()
+                    .map(|x| *x as i64)
+                    .collect::<Vec<_>>(),
+            ),
+        ])
+        .expect("Error creating dataframe");
+
+        df
+    }
+}
+
+impl Add for DigestionHistogram {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        assert_eq!(self.read_type, other.read_type);
+
+        let mut histogram = self.histogram.clone();
+        for (k, v) in other.histogram {
+            *histogram.entry(k).or_insert(0) += v;
+        }
+        Self {
+            sample: self.sample,
+            read_type: self.read_type,
+            read_number: self.read_number,
+            histogram,
+        }
+    }
 }
 
 struct DigestibleRead<'a, R> {
@@ -167,7 +244,12 @@ pub fn digest_fastq(
     read_type: ReadType,
     min_slice_length: Option<usize>,
     sample: Option<String>,
-) -> anyhow::Result<DigestionStats> {
+) -> anyhow::Result<(
+    DigestionStats,
+    Vec<DigestionHistogram>,
+    Vec<DigestionHistogram>,
+    Vec<DigestionHistogram>,
+)> {
     let (slice_tx, slice_rx) = channel::unbounded();
     let (stats_tx, stats_rx) = channel::unbounded();
 
@@ -185,7 +267,23 @@ pub fn digest_fastq(
     };
 
     let sample = sample.unwrap_or("digested.fastq.gz".to_string());
-    let mut digestion_stats = DigestionStats::new(sample, read_type.clone());
+    let mut stats_read_level = DigestionStats::new(sample.clone(), read_type.clone());
+
+    let mut stats_slice_number_unfiltered = match &fastqs.len() {
+        1 => vec![DigestionHistogram::new(
+            sample.clone(),
+            read_type.clone(),
+            ReadNumber::One,
+        )],
+        2 => vec![
+            DigestionHistogram::new(sample.clone(), read_type.clone(), ReadNumber::One),
+            DigestionHistogram::new(sample.clone(), read_type.clone(), ReadNumber::Two),
+        ],
+        _ => panic!("Only 1 or 2 fastq files are supported"),
+    };
+
+    let mut stats_slice_number_filtered = stats_slice_number_unfiltered.clone();
+    let mut stats_slice_length = stats_slice_number_unfiltered.clone();
 
     let digestion_thread = std::thread::spawn(move || {
         let mut handles_reader =
@@ -205,22 +303,28 @@ pub fn digest_fastq(
                         None,
                     );
 
-                    digestion_stats.number_of_reads += 1;
+                    stats_read_level.number_of_reads += 1;
                     let slices = digestible_read.digest();
 
-                    digestion_stats.number_of_read_pairs_unfiltered += 1;
-                    digestion_stats.number_of_read_pairs_filtered += match slices.len() > 0 {
+                    stats_read_level.number_of_read_pairs_unfiltered += 1;
+                    stats_read_level.number_of_read_pairs_filtered += match slices.len() > 0 {
                         true => 1,
                         false => 0,
                     };
 
-                    digestion_stats.number_of_slices_unfiltered +=
+                    stats_read_level.number_of_slices_unfiltered +=
                         digestible_read.n_slices_unfiltered as u64;
 
-                    digestion_stats.number_of_slices_filtered +=
+                    stats_read_level.number_of_slices_filtered +=
                         digestible_read.n_slices_filtered as u64;
 
+                    stats_slice_number_unfiltered[0]
+                        .add_entry(digestible_read.n_slices_unfiltered as u64);
+                    stats_slice_number_filtered[0]
+                        .add_entry(digestible_read.n_slices_filtered as u64);
+
                     for slice in slices {
+                        stats_slice_length[0].add_entry(slice.seq().len() as u64);
                         slice_tx.send(slice).unwrap();
                     }
                 })
@@ -236,8 +340,8 @@ pub fn digest_fastq(
                         let r1 = res1.expect("Error getting read 1");
                         let r2 = res2.expect("Error getting read 2");
 
-                        digestion_stats.number_of_reads += 2;
-                        digestion_stats.number_of_read_pairs_unfiltered += 1;
+                        stats_read_level.number_of_reads += 2;
+                        stats_read_level.number_of_read_pairs_unfiltered += 1;
 
                         let mut digestible_read_1 = DigestibleRead::new(
                             &r1,
@@ -260,28 +364,51 @@ pub fn digest_fastq(
 
                         let slices_2 = digestible_read_2.digest();
 
-                        digestion_stats.number_of_read_pairs_filtered +=
+                        stats_read_level.number_of_read_pairs_filtered +=
                             match (slices_1.len(), slices_2.len()) {
                                 (0, 0) => 0,
                                 _ => 1,
                             };
 
-                        digestion_stats.number_of_slices_unfiltered +=
+                        stats_read_level.number_of_slices_unfiltered +=
                             digestible_read_1.n_slices_unfiltered as u64
                                 + digestible_read_2.n_slices_unfiltered as u64;
 
-                        digestion_stats.number_of_slices_filtered +=
+                        stats_read_level.number_of_slices_filtered +=
                             digestible_read_1.n_slices_filtered as u64
                                 + digestible_read_2.n_slices_filtered as u64;
 
-                        for slice in slices_1.into_iter().chain(slices_2.into_iter()) {
+                        stats_slice_number_unfiltered[0]
+                            .add_entry(digestible_read_1.n_slices_unfiltered as u64);
+                        stats_slice_number_filtered[0]
+                            .add_entry(digestible_read_1.n_slices_filtered as u64);
+
+                        stats_slice_number_unfiltered[1]
+                            .add_entry(digestible_read_2.n_slices_unfiltered as u64);
+                        stats_slice_number_filtered[1]
+                            .add_entry(digestible_read_2.n_slices_filtered as u64);
+
+                        for slice in slices_1.into_iter() {
+                            stats_slice_length[0].add_entry(slice.seq().len() as u64);
+                            slice_tx.send(slice).unwrap();
+                        }
+
+                        for slice in slices_2.into_iter() {
+                            stats_slice_length[1].add_entry(slice.seq().len() as u64);
                             slice_tx.send(slice).unwrap();
                         }
                     })
             }
             _ => {}
         }
-        stats_tx.send(digestion_stats).expect("Error sending stats");
+        stats_tx
+            .send((
+                stats_read_level,
+                stats_slice_number_unfiltered,
+                stats_slice_number_filtered,
+                stats_slice_length,
+            ))
+            .expect("Error sending stats");
         drop(stats_tx);
         drop(slice_tx);
     });
@@ -335,7 +462,7 @@ mod tests {
         let fq2 = "tests/fastq_digest/digest_2.fastq.gz";
         let output = "tests/fastq_digest/digest_output.fastq.gz";
 
-        let stats = digest_fastq(
+        let (read_stats, hist_unfilt, hist_filt, hist_len) = digest_fastq(
             vec![fq1.to_string(), fq2.to_string()],
             output.to_string(),
             "GATC".to_lowercase().to_string(),
@@ -346,8 +473,8 @@ mod tests {
 
         assert!(std::path::Path::new(output).exists());
         assert_eq!(
-            stats.number_of_read_pairs_filtered,
-            stats.number_of_read_pairs_unfiltered
+            read_stats.number_of_read_pairs_filtered,
+            read_stats.number_of_read_pairs_unfiltered
         );
 
         Ok(())
@@ -358,7 +485,7 @@ mod tests {
         let fq1 = "tests/fastq_digest/digest_1.fastq.gz";
         let output = "tests/fastq_digest/digest_output.fastq.gz";
 
-        let stats = digest_fastq(
+        let (read_stats, hist_unfilt, hist_filt, hist_len) = digest_fastq(
             vec![fq1.to_string()],
             output.to_string(),
             "GATC".to_lowercase().to_string(),
@@ -368,7 +495,7 @@ mod tests {
         )?;
 
         assert!(std::path::Path::new(output).exists());
-        assert_eq!(stats.number_of_read_pairs_filtered, 876);
+        assert_eq!(read_stats.number_of_read_pairs_filtered, 876);
 
         Ok(())
     }
