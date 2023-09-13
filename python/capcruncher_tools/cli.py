@@ -264,6 +264,8 @@ def count(
     import capcruncher.api.storage
     import random
     import string
+    import tqdm
+    import tabulate
 
     df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
 
@@ -271,9 +273,16 @@ def count(
     viewpoints = df["viewpoint"].cat.categories.to_list()
     viewpoint_sizes = df["viewpoint"].value_counts()
     viewpoint_sizes_dict = viewpoint_sizes.to_dict()
+    viewpoint_sizes_df = pd.DataFrame.from_dict(
+        viewpoint_sizes_dict, orient="index", columns=["n_slices"]
+    )
+    viewpoint_sizes_df_tab = tabulate.tabulate(
+        viewpoint_sizes_df, headers="keys", tablefmt="psql", showindex=True
+    )
+
 
     logging.info(f"Number of viewpoints: {len(viewpoints)}")
-    logging.info(f"Number of slices per viewpoint: {viewpoint_sizes_dict}")
+    logging.info(f"Number of slices per viewpoint:\n {viewpoint_sizes_df_tab}")
 
     # If any viewpoint has more than 2 million slices, switch to low memory mode
     if any([vp for vp in viewpoint_sizes_dict.values() if vp > 2e6]):
@@ -297,8 +306,6 @@ def count(
 
     counts = []
     for viewpoint in viewpoints:
-        logging.info(f"Setting up viewpoint: {viewpoint}")
-
         counts.append(
             count_interactions.remote(
                 parquet=f"{reporters}",
@@ -322,9 +329,9 @@ def count(
     bins_ref = ray.put(bins)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        coolers = []
+        cooler_refs = []
         for count_future in counts:
-            coolers.append(
+            cooler_refs.append(
                 make_cooler.remote(
                     output_prefix=str(
                         pathlib.Path(tmpdir)
@@ -337,7 +344,14 @@ def count(
                 )
             )
 
-        coolers = [clr.split("::")[0] for clr in ray.get(coolers)]
+        with tqdm.tqdm(total=len(cooler_refs)) as pbar:
+            coolers = []
+            while cooler_refs:
+                coolers_completed, cooler_refs = ray.wait(cooler_refs)
+                for clr in coolers_completed:
+                    clr = ray.get(clr)
+                    coolers.append(clr.split("::")[0])
+                    pbar.update(1)
 
         logging.info(f"Making final cooler at {output}")
         capcruncher.api.storage.merge_coolers(coolers, output=output)
