@@ -21,6 +21,22 @@ where
     Ok(file_handles)
 }
 
+pub fn get_file_handles<P>(
+    paths: Vec<P>,
+) -> Result<Vec<Box<dyn std::io::Read>>, std::io::Error>
+where
+    P: AsRef<Path>,
+{
+    let file_handles: Vec<_> = paths
+        .iter()
+        .map(|p| niffler::from_path(p.as_ref()).expect("Compression not recognised"))
+        .map(|(fh, _fmt)| fh)
+        .collect();
+
+    Ok(file_handles)
+}
+
+
 pub fn get_fastq_writer_file_handles<P>(
     paths: Vec<P>,
     compression_format: niffler::compression::Format,

@@ -1,194 +1,42 @@
+use anyhow::Ok;
 use bio::io;
 use bio::pattern_matching::bom::BOM;
-use fastq::{each_zipped, Parser, Record};
-use hashbrown::{HashMap, HashSet};
-use indicatif::ParallelProgressIterator;
+use crossbeam::channel;
 use log::{debug, info, warn};
+use polars::prelude::*;
 use rand::prelude::*;
 use rayon::prelude::*;
+use std::thread;
+use strum::{Display, EnumString};
+use indicatif::{ProgressBar, ProgressIterator};
 
-use crate::utils::get_fastq_reader_file_handles;
+use crate::utils::{
+    get_fastq_writer_file_handles, get_file_handles,
+};
 
-// class ReadDigestionProcess(multiprocessing.Process):
-//     """
-//     Process subclass for multiprocessing fastq digestion.
-
-//     """
-
-//     def __init__(
-//         self,
-//         inq: multiprocessing.Queue,
-//         outq: multiprocessing.Queue,
-//         stats_pipe: multiprocessing.Pipe = None,
-//         **digestion_kwargs,
-//     ) -> None:
-
-//         """
-//         Args:
-//          inq (multiprocessing.SimpleQueue): Queue to hold list of reads to digest.
-//          outq (multiprocessing.SimpleQueue): Queue to hold list of digested reads.
-//          stats_pipe (multiprocessing.Pipe, optional): Pipe to send statistics to. Defaults to None.
-//          **digestion_kwargs Dict[Any, Any]: Kwargs passed to DigestedRead.
-
-//         Raises:
-//             KeyError: digestion_kwargs must contain: cutsite
-//         """
-
-//         super(ReadDigestionProcess, self).__init__()
-
-//         self.inq = inq
-//         self.outq = outq
-//         self.stats_pipe = stats_pipe
-//         self.digestion_kwargs = digestion_kwargs
-//         self.read_type = digestion_kwargs.get("read_type", "flashed")
-//         self._stat_container = DigestionStats
-
-//         if "cutsite" not in digestion_kwargs:
-//             raise KeyError("Cutsite is required to be present in digestion arguments")
-
-//     def _digest_reads(self, reads, **digestion_kwargs):
-//         digested = []
-//         for i, read in enumerate(reads):
-//             if i == 0:
-//                 digested.append(DigestedRead(read, **digestion_kwargs))
-//             else:
-//                 digestion_kwargs["slice_number_start"] = digested[i - 1].slices_filtered
-//                 digested.append(DigestedRead(read, **digestion_kwargs))
-
-//         return digested
-
-//     def _digestion_statistics_to_dataframe(self, stats: List[DigestionStats]):
-
-//         if stats:
-
-//             df = pd.DataFrame(stats)
-//             return (
-//                 df.groupby(["read_type", "read_number", "unfiltered", "filtered"])
-//                 .size()
-//                 .to_frame("count")
-//                 .reset_index()
-//             )
-
-//     def run(self):
-//         """
-//         Performs read digestion.
-
-//         Reads to digest are pulled from inq, digested with the DigestedRead class
-//         and the results placed on outq for writing.
-
-//         If a statq is provided, read digestion stats are placed into this queue for
-//         aggregation.
-
-//         """
-
-//         buffer_stats = list()
-//         buffer_reads = list()
-//         dframes_stats = list()
-
-//         while True:
-//             try:
-//                 reads = self.inq.get(block=True, timeout=0.01)
-
-//                 # Make sure that we don't need to terminate
-//                 if reads:
-
-//                     # Accounts for PE as well as flashed
-//                     for read in reads:
-
-//                         # Digest the read
-//                         digested = self._digest_reads(read, **self.digestion_kwargs)
-
-//                         # Parse the digestion results
-//                         for read_number, digested_read in enumerate(digested):
-
-//                             # Only write if there are valid slices present
-//                             if digested_read.has_valid_slices:
-//                                 buffer_reads.append(str(digested_read))
-
-//                             # Will record all reads even if these do not digest
-//                             digested_read_stats = self._stat_container(
-//                                 read_type=self.read_type,
-//                                 read_number=(
-//                                     read_number + 1
-//                                     if not self.read_type == "flashed"
-//                                     else read_number
-//                                 ),
-//                                 unfiltered=digested_read.slices_unfiltered,
-//                                 filtered=digested_read.slices_filtered,
-//                             )
-
-//                             # Append stats to the stats buffer
-//                             buffer_stats.append(digested_read_stats)
-
-//                     # Aggregate individual read stats into a dataframe
-//                     df_stat_batch = self._digestion_statistics_to_dataframe(
-//                         buffer_stats
-//                     )
-
-//                     # Add this summary to the overall stats
-//                     dframes_stats.append(df_stat_batch)
-
-//                     # Add the digested reads to the output queue
-//                     self.outq.put("".join(buffer_reads.copy()))
-//                     buffer_reads.clear()
-//                     buffer_stats.clear()
-
-//                 else:
-//                     break
-
-//             except queue.Empty:
-//                 continue
-
-//         if self.stats_pipe:
-//             # Merge all dataframes together
-
-//             try:
-//                 df_stats = pd.concat(dframes_stats)
-//                 df_stats_aggregated = (
-//                     df_stats.groupby(
-//                         ["read_type", "read_number", "unfiltered", "filtered"]
-//                     )
-//                     .sum()
-//                     .reset_index()
-//                 )
-
-//                 # Send the statistics to the main process
-//                 self.stats_pipe.send(df_stats_aggregated)
-//             except ValueError:
-//                 # Might not actually have got any reads, just return none
-//                 self.stats_pipe.send(None)
-
+#[derive(Debug, Clone, EnumString, Display)]
 pub enum ReadType {
     Flashed,
     Pe,
 }
 
-impl std::fmt::Display for ReadType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReadType::Flashed => write!(f, "flashed"),
-            ReadType::Pe => write!(f, "pe"),
-        }
-    }
-}
-
-struct DigestableRead<R> {
-    read: R,
-    restriction_site: String,
+struct DigestibleRead<'a, R> {
+    read: &'a R,
+    restriction_site: Vec<u8>,
     min_slice_length: usize,
     slice_number_start: usize,
     allow_undigested: bool,
-    read_type: ReadType,
+    read_type: &'a ReadType,
     n_slices_unfiltered: usize,
     n_slices_filtered: usize,
 }
 
-impl<R> DigestableRead<R> {
+impl<'a, R> DigestibleRead<'a, R> {
     pub fn new(
-        read: R,
-        restriction_site: String,
+        read: &'a R,
+        restriction_site: Vec<u8>,
         allow_undigested: bool,
-        read_type: ReadType,
+        read_type: &'a ReadType,
         min_slice_length: Option<usize>,
         slice_number_start: Option<usize>,
     ) -> Self {
@@ -206,24 +54,21 @@ impl<R> DigestableRead<R> {
             n_slices_filtered: 0,
         }
     }
+
+    fn validate_slice(&self, slice: &bio::io::fastq::Record) -> bool {
+        slice.seq().len() >= self.min_slice_length
+    }
 }
-impl<R: Record> DigestableRead<R> {
-    fn digest_indicies(&mut self) -> Vec<usize> {
+
+impl DigestibleRead<'_, bio::io::fastq::Record> {
+    fn digest_indicies(&self) -> Vec<usize> {
         let sequence = self.read.seq().to_ascii_lowercase().to_vec();
-        let matcher = BOM::new(self.restriction_site.to_ascii_lowercase().as_bytes());
+        let matcher = BOM::new(&self.restriction_site);
         let mut slice_indexes: Vec<_> = matcher.find_all(&sequence).collect();
 
         // Add the start and end to slices
         slice_indexes.insert(0, 0);
         slice_indexes.push(sequence.len());
-
-        // Remove all slices that are smaller than the minimum slice size
-
-        slice_indexes = slice_indexes
-            .into_iter()
-            .filter(|&x| x >= self.min_slice_length)
-            .collect();
-
         slice_indexes
     }
 
@@ -232,8 +77,7 @@ impl<R: Record> DigestableRead<R> {
         let mut slice_no = self.slice_number_start;
 
         let slice_indexes = self.digest_indicies();
-
-        if slice_indexes.len() > 1 || self.allow_undigested {
+        if slice_indexes.len() > 2 || self.allow_undigested {
             for (i, (slice_start, slice_end)) in slice_indexes
                 .iter()
                 .zip(slice_indexes.iter().skip(1))
@@ -264,14 +108,10 @@ impl<R: Record> DigestableRead<R> {
         slices
     }
 
-    fn validate_slice(&self, slice: &bio::io::fastq::Record) -> bool {
-        slice.seq().len() >= self.min_slice_length
-    }
-
     fn prepare_slice(&self, start: usize, end: usize, slice_no: usize) -> bio::io::fastq::Record {
         let read_name = format!(
-            "@{}|{}|{}|{}",
-            std::str::from_utf8(self.read.head()).expect("Invalid UTF-8 in read name"),
+            "{}|{}|{}|{}",
+            self.read.id(),
             self.read_type,
             slice_no,
             thread_rng().gen_range(0..100)
@@ -284,27 +124,251 @@ impl<R: Record> DigestableRead<R> {
     }
 }
 
-struct DigestableFastq {
-    fastq: String,
-    restriction_site: String,
-    allow_undigested: bool,
+#[derive(Debug, Clone)]
+pub struct DigestionStats {
+    sample: String,
     read_type: ReadType,
-    min_slice_length: Option<usize>,
+    number_of_reads: u64,
+    number_of_read_pairs_unfiltered: u64,
+    number_of_read_pairs_filtered: u64,
+    number_of_slices_unfiltered: u64,
+    number_of_slices_filtered: u64,
 }
 
-fn digest_fastq(
+impl DigestionStats {
+    pub fn new(sample: String, read_type: ReadType) -> Self {
+        Self {
+            sample: sample,
+            read_type: read_type,
+            number_of_reads: 0,
+            number_of_read_pairs_unfiltered: 0,
+            number_of_read_pairs_filtered: 0,
+            number_of_slices_unfiltered: 0,
+            number_of_slices_filtered: 0,
+        }
+    }
+    pub fn to_dataframe(&self) -> DataFrame {
+        let mut df = df!(
+            "sample" => &[self.sample.clone()],
+            "read_type" => &[self.read_type.to_string()],
+            "number_of_reads" => [self.number_of_reads],
+            "number_of_slices_unfiltered" => &[self.number_of_slices_unfiltered],
+            "number_of_slices_filtered" => &[self.number_of_slices_filtered])
+        .expect("Error creating dataframe");
+        df
+    }
+}
+
+pub fn digest_fastq(
     fastqs: Vec<String>,
+    output: String,
     restriction_site: String,
     read_type: ReadType,
     min_slice_length: Option<usize>,
-) -> Result<(), std::io::Error> {
+    sample: Option<String>,
+) -> anyhow::Result<DigestionStats> {
+    let (slice_tx, slice_rx) = channel::unbounded();
+    let (stats_tx, stats_rx) = channel::unbounded();
 
+    let mut handles_writer = get_fastq_writer_file_handles(
+        vec![output.clone()],
+        niffler::Format::Gzip,
+        Some(niffler::Level::One),
+    )?;
+    let mut fastq_writer = bio::io::fastq::Writer::new(handles_writer[0].as_mut());
 
+    let restriction_site = restriction_site.as_bytes().to_vec();
+    let allow_undigested = match read_type {
+        ReadType::Flashed => false,
+        ReadType::Pe => true,
+    };
 
-    Ok(())
+    let sample = sample.unwrap_or(output.strip_suffix(".fastq.gz").unwrap().to_string());
+    let mut digestion_stats = DigestionStats::new(sample, read_type.clone());
 
+    let digestion_thread = std::thread::spawn(move || {
+        let mut handles_reader =
+            get_file_handles(fastqs.clone()).expect("Error getting file handles");
+        match fastqs.len() {
+            1 => {
+                let reader = io::fastq::Reader::new(handles_reader[0].as_mut());
 
+                reader.records().for_each(|res| {
+                    let r = res.expect("Error reading record");
+                    let mut digestible_read = DigestibleRead::new(
+                        &r,
+                        restriction_site.clone(),
+                        allow_undigested,
+                        &read_type,
+                        min_slice_length,
+                        None,
+                    );
 
+                    digestion_stats.number_of_reads += 1;
+                    let slices = digestible_read.digest();
 
+                    digestion_stats.number_of_read_pairs_unfiltered += 1;
+                    digestion_stats.number_of_read_pairs_filtered += match slices.len() > 0 {
+                        true => 1,
+                        false => 0,
+                    };
 
+                    digestion_stats.number_of_slices_unfiltered +=
+                        digestible_read.n_slices_unfiltered as u64;
+
+                    digestion_stats.number_of_slices_filtered +=
+                        digestible_read.n_slices_filtered as u64;
+
+                    for slice in slices {
+                        slice_tx.send(slice).unwrap();
+                    }
+                })
+            }
+            2 => {
+                let reader_1 = io::fastq::Reader::new(handles_reader.pop().unwrap());
+                let reader_2 = io::fastq::Reader::new(handles_reader.pop().unwrap());
+
+                reader_1
+                    .records()
+                    .zip(reader_2.records())
+                    .for_each(|(res1, res2)| {
+                        let r1 = res1.expect("Error getting read 1");
+                        let r2 = res2.expect("Error getting read 2");
+
+                        digestion_stats.number_of_reads += 2;
+                        digestion_stats.number_of_read_pairs_unfiltered += 1;
+
+                        let mut digestible_read_1 = DigestibleRead::new(
+                            &r1,
+                            restriction_site.clone(),
+                            allow_undigested,
+                            &read_type,
+                            min_slice_length,
+                            None,
+                        );
+
+                        let slices_1 = digestible_read_1.digest();
+                        let mut digestible_read_2 = DigestibleRead::new(
+                            &r2,
+                            restriction_site.clone(),
+                            allow_undigested,
+                            &read_type,
+                            min_slice_length,
+                            Some(digestible_read_1.n_slices_filtered),
+                        );
+
+                        let slices_2 = digestible_read_2.digest();
+
+                        digestion_stats.number_of_read_pairs_filtered +=
+                            match (slices_1.len(), slices_2.len()) {
+                                (0, 0) => 0,
+                                _ => 1,
+                            };
+
+                        digestion_stats.number_of_slices_unfiltered +=
+                            digestible_read_1.n_slices_unfiltered as u64
+                                + digestible_read_2.n_slices_unfiltered as u64;
+
+                        digestion_stats.number_of_slices_filtered +=
+                            digestible_read_1.n_slices_filtered as u64
+                                + digestible_read_2.n_slices_filtered as u64;
+
+                        for slice in slices_1.into_iter().chain(slices_2.into_iter()) {
+                            slice_tx.send(slice).unwrap();
+                        }
+                    })
+            }
+            _ => {}
+        }
+        stats_tx.send(digestion_stats).expect("Error sending stats");
+        drop(stats_tx);
+        drop(slice_tx);
+    });
+
+    for slice in slice_rx {
+        fastq_writer.write_record(&slice).unwrap();
+    }
+
+    digestion_thread.join().unwrap();
+
+    let stats = stats_rx.recv().unwrap();
+
+    Ok(stats)
+}
+
+// Tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use bio::io::fastq::Record;
+
+    #[test]
+    fn test_digestible_read() -> Result<()> {
+        let read = Record::with_attrs(
+            "@test_read",
+            None,
+            b"AAAAAAAAAAAAAAAAAAAAAAAAGATCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            b"############################################################",
+        );
+        let mut digestible_read = DigestibleRead::new(
+            &read,
+            b"GATC".to_ascii_lowercase().to_vec(),
+            false,
+            &ReadType::Flashed,
+            None,
+            None,
+        );
+        let slices = digestible_read.digest();
+
+        println!("{:?}", slices);
+
+        assert_eq!(slices.len(), 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_digest_fastq_pe() -> Result<()> {
+        let fq1 = "tests/fastq_digest/digest_1.fastq.gz";
+        let fq2 = "tests/fastq_digest/digest_2.fastq.gz";
+        let output = "tests/fastq_digest/digest_output.fastq.gz";
+
+        let stats = digest_fastq(
+            vec![fq1.to_string(), fq2.to_string()],
+            output.to_string(),
+            "GATC".to_lowercase().to_string(),
+            ReadType::Pe,
+            None,
+            Some("test_sample".to_string()),
+        )?;
+
+        assert!(std::path::Path::new(output).exists());
+        assert_eq!(
+            stats.number_of_read_pairs_filtered,
+            stats.number_of_read_pairs_unfiltered
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_digest_fastq_flashed() -> Result<()> {
+        let fq1 = "tests/fastq_digest/digest_1.fastq.gz";
+        let output = "tests/fastq_digest/digest_output.fastq.gz";
+
+        let stats = digest_fastq(
+            vec![fq1.to_string()],
+            output.to_string(),
+            "GATC".to_lowercase().to_string(),
+            ReadType::Flashed,
+            None,
+            Some("test_sample".to_string()),
+        )?;
+
+        assert!(std::path::Path::new(output).exists());
+        assert_eq!(stats.number_of_read_pairs_filtered, 876);
+
+        Ok(())
+    }
 }

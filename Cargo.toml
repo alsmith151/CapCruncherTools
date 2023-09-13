@@ -11,7 +11,7 @@ anyhow = "*"
 bio = "1.2.0"
 crossbeam = "0.8.2"
 ctrlc = "*"
-fastq = "0.6.0"
+fastq = "*"
 hashbrown = {version = "*", features = ["rayon"]}
 indicatif = {version = "*", features = ["rayon"]}
 itertools = "0.10.5"
@@ -21,13 +21,14 @@ noodles = { version = "0.20.0", features = ["fasta", "bam"] }
 polars = {version = "0.32.0", features = ["lazy", "parquet", "partition_by", "dtype-categorical"]}
 pyo3 = { version = "*", features = ["abi3-py37", "serde", "extension-module", "serde", "hashbrown"] }
 pyo3-log = "*"
-pyo3-polars = "0.6.0"
+pyo3-polars = "*"
 pythonize = "*"
 rand = "0.8.5"
 rayon = "*"
 serde = { version = "1.*", features = ["derive"] }
 tempfile = "3.3.0"
 twox-hash = "1.6.2"
+strum = { version = "0.25", features = ["derive"] }
 
 
 [lib]
