@@ -48,6 +48,7 @@ jobs:
           set -e
           pip install capcruncher-tools --find-links dist --force-reinstall
           pip install pytest
+          cargo test
           pytest
       - name: pytest
         if: ${{ !startsWith(matrix.target, 'x86') && matrix.target != 'ppc64' }}
