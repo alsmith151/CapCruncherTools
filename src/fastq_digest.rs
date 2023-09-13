@@ -2,17 +2,15 @@ use anyhow::Ok;
 use bio::io;
 use bio::pattern_matching::bom::BOM;
 use crossbeam::channel;
+use indicatif::{ProgressBar, ProgressIterator};
 use log::{debug, info, warn};
 use polars::prelude::*;
 use rand::prelude::*;
 use rayon::prelude::*;
 use std::thread;
 use strum::{Display, EnumString};
-use indicatif::{ProgressBar, ProgressIterator};
 
-use crate::utils::{
-    get_fastq_writer_file_handles, get_file_handles,
-};
+use crate::utils::{get_fastq_writer_file_handles, get_file_handles};
 
 #[derive(Debug, Clone, EnumString, Display)]
 pub enum ReadType {
@@ -148,12 +146,15 @@ impl DigestionStats {
         }
     }
     pub fn to_dataframe(&self) -> DataFrame {
-        let mut df = df!(
+        let df = df!(
             "sample" => &[self.sample.clone()],
             "read_type" => &[self.read_type.to_string()],
-            "number_of_reads" => [self.number_of_reads],
+            "number_of_reads" => &[self.number_of_reads],
+            "number_of_read_pairs_unfiltered" => &[self.number_of_read_pairs_unfiltered],
+            "number_of_read_pairs_filtered" => &[self.number_of_read_pairs_filtered],
             "number_of_slices_unfiltered" => &[self.number_of_slices_unfiltered],
-            "number_of_slices_filtered" => &[self.number_of_slices_filtered])
+            "number_of_slices_filtered" => &[self.number_of_slices_filtered]
+        )
         .expect("Error creating dataframe");
         df
     }
@@ -183,7 +184,7 @@ pub fn digest_fastq(
         ReadType::Pe => true,
     };
 
-    let sample = sample.unwrap_or(output.strip_suffix(".fastq.gz").unwrap().to_string());
+    let sample = sample.unwrap_or("digested.fastq.gz".to_string());
     let mut digestion_stats = DigestionStats::new(sample, read_type.clone());
 
     let digestion_thread = std::thread::spawn(move || {

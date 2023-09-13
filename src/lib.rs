@@ -16,7 +16,8 @@ mod utils;
 #[pyfunction]
 #[pyo3(
     name = "fastq_deduplicate",
-    text_signature = "(fq_in, fq_out, shuffle)"
+    text_signature = "(fq_in, fq_out, shuffle=False)",
+    signature = (fq_in, fq_out, shuffle=false)
 )]
 fn deduplicate_fastq_py(
     fq_in: Vec<(String, String)>,

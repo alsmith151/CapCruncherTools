@@ -243,7 +243,9 @@ def digest_genome(*args, **kwargs):
     help="Number of cores to use for counting.",
     type=int,
 )
-@click.option("--assay", type=click.Choice(["capture", "tri", "tiled"]), default="capture")
+@click.option(
+    "--assay", type=click.Choice(["capture", "tri", "tiled"]), default="capture"
+)
 def count(
     reporters: os.PathLike,
     output: os.PathLike = "counts.hdf5",
@@ -262,14 +264,13 @@ def count(
     import capcruncher.api.storage
     import random
     import string
-    
+
     df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
-    
+
     # Extract the viewpoint names and sizes from the parquet file
     viewpoints = df["viewpoint"].cat.categories.to_list()
     viewpoint_sizes = df["viewpoint"].value_counts()
-    viewpoint_sizes_dict = viewpoint_sizes.to_dict() 
-    
+    viewpoint_sizes_dict = viewpoint_sizes.to_dict()
 
     logging.info(f"Number of viewpoints: {len(viewpoints)}")
     logging.info(f"Number of slices per viewpoint: {viewpoint_sizes_dict}")
@@ -280,36 +281,35 @@ def count(
             "High number of slices per viewpoint detected. Switching to low memory mode"
         )
         low_memory = True
-        
+
         # Extract the partitions used to generate the file
         df = pd.read_parquet(reporters, engine="pyarrow", columns=["bam"])
-        partitions = df["bam"].cat.categories.to_list()   
-        
+        partitions = df["bam"].cat.categories.to_list()
+
     else:
         low_memory = False
 
     ray.init(num_cpus=n_cores, ignore_reinit_error=True)
-    
+
     reporters_path = pathlib.Path(reporters)
     if reporters_path.is_dir():
         reporters = str(reporters_path / "*.parquet")
-    
+
     counts = []
     for viewpoint in viewpoints:
         logging.info(f"Setting up viewpoint: {viewpoint}")
-        
+
         counts.append(
-                count_interactions.remote(
-                    parquet=f"{reporters}",
-                    viewpoint=viewpoint,
-                    remove_exclusions=remove_exclusions,
-                    remove_viewpoint=remove_viewpoint,
-                    subsample=subsample,
-                    low_memory=low_memory,
-                    partitions=partitions if low_memory else None,
-                )
+            count_interactions.remote(
+                parquet=f"{reporters}",
+                viewpoint=viewpoint,
+                remove_exclusions=remove_exclusions,
+                remove_viewpoint=remove_viewpoint,
+                subsample=subsample,
+                low_memory=low_memory,
+                partitions=partitions if low_memory else None,
             )
-                
+        )
 
     bins = pr.read_bed(fragment_map, as_df=True).rename(
         columns={
@@ -333,14 +333,52 @@ def count(
                     future=count_future,
                     bins=bins_ref,
                     viewpoint_path=viewpoint_path,
-                    assay=assay
+                    assay=assay,
                 )
             )
- 
+
         coolers = [clr.split("::")[0] for clr in ray.get(coolers)]
 
         logging.info(f"Making final cooler at {output}")
         capcruncher.api.storage.merge_coolers(coolers, output=output)
+
+
+@cli.command("digest-fastq")
+@click.option("-i","--input-fastqs", multiple=True, required=True)
+@click.option(
+    "-r",
+    "--restriction_enzyme",
+    help="Restriction enzyme name or sequence to use for in silico digestion.",
+    required=True,
+)
+@click.option(
+    "-m",
+    "--mode",
+    help="Digestion mode. Combined (Flashed) or non-combined (PE) read pairs.",
+    type=click.Choice(["flashed", "pe"], case_sensitive=False),
+    required=True,
+)
+@click.option("-o", "--output_file", default="out.fastq.gz")
+@click.option("--minimum_slice_length", default=18, type=click.INT)
+@click.option("--stats-prefix", help="Output prefix for stats file", default="stats")
+@click.option(
+    "--sample-name",
+    help="Name of sample e.g. DOX_treated_1. Required for correct statistics.",
+    default="sampleX",
+)
+def digest_fastq(*args, **kwargs):
+    logging.info(f"Digesting FASTQ files using {kwargs['restriction_enzyme']}")
+    df_stats = digest.digest_fastq(
+        kwargs["input_fastqs"],
+        kwargs["restriction_enzyme"].lower(),
+        kwargs["output_file"],
+        kwargs["mode"].capitalize(),
+        kwargs["sample_name"],
+        kwargs["minimum_slice_length"],
+    )
+
+    print(df_stats)
+    df_stats.write_csv(kwargs["stats_prefix"] + ".digestion.csv")
 
 
 if __name__ == "__main__":
