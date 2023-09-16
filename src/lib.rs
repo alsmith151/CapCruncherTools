@@ -80,9 +80,9 @@ fn digest_fasta_py(
     text_signature = "(fastq, restriction_site, output, read_type, sample, min_slice_length)"
 )]
 fn digest_fastq_py(
-    fastq: Vec<String>,
-    restriction_site: String,
+    fastqs: Vec<String>,
     output: String,
+    restriction_site: String,
     read_type: String,
     sample: String,
     min_slice_length: Option<usize>,
@@ -92,7 +92,7 @@ fn digest_fastq_py(
 
     // Run the digest
     let res = fastq_digest::digest_fastq(
-        fastq,
+        fastqs,
         output,
         restriction_site.to_lowercase(),
         fastq_digest::ReadType::from_str(&read_type).expect("Invalid read type"),

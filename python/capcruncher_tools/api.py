@@ -36,9 +36,9 @@ def deduplicate_fastq(
     if len(fastq1) != len(fastq2):
         raise ValueError("Number of FASTQ files in R1 and R2 must be equal")
 
-    print(output_prefix)
     output_prefix_path = pathlib.Path(output_prefix)
     output_prefix_path.mkdir(parents=True, exist_ok=True)
+    
 
     fastq_in = [(str(f1), str(f2)) for f1,f2 in zip(fastq1, fastq2)]
     fastq_out = [
@@ -70,10 +70,10 @@ def deduplicate_fastq(
 
 
 def digest_fastq(
-    fastqs: List[str],
-    read_type: Literal["flashed", "pe"],
-    restriction_enzyme: str = "DpnII",
+    fastqs: List[str] = None,
     output: str = "digested.fastq.gz",
+    read_type: Literal["flashed", "pe"] = "pe",
+    restriction_enzyme: str = "dpnii",
     minimum_slice_length: int = 18,
     sample_name: str = "sample",
 ) -> Dict[str, pl.DataFrame]:
@@ -91,8 +91,8 @@ def digest_fastq(
     Returns:
         DataFrame with digestion stats.
     """
+       
 
-    logging.info("Digesting FASTQ files")
     (
         stats_read,
         stats_hist_unfilt,
@@ -100,8 +100,8 @@ def digest_fastq(
         stats_hist_length,
     ) = digest.digest_fastq(
         fastqs,
-        restriction_enzyme,
         output,
+        restriction_enzyme,
         read_type,
         sample_name,
         minimum_slice_length,
@@ -241,7 +241,7 @@ def count_interactions(
     futures = []
     for viewpoint in viewpoints:
         futures.append(
-            count_interactions.remote(
+            capcruncher_tools.count.count_interactions.remote(
                 parquet=f"{reporters}",
                 viewpoint=viewpoint,
                 remove_exclusions=remove_exclusions,
