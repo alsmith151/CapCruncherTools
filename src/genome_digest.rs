@@ -107,8 +107,6 @@ pub fn digest_fasta(
 
         std::thread::spawn(move || {
             for entry in recv_raw {
-                println!("Digested entry {}", entry.id());
-
                 let sequence = entry.seq();
                 let mut digested_entry = DigestedFastaEntry::new(
                     entry.id().to_string(),

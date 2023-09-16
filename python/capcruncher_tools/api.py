@@ -36,20 +36,21 @@ def deduplicate_fastq(
     if len(fastq1) != len(fastq2):
         raise ValueError("Number of FASTQ files in R1 and R2 must be equal")
 
+    print(output_prefix)
     output_prefix_path = pathlib.Path(output_prefix)
     output_prefix_path.mkdir(parents=True, exist_ok=True)
 
-    fastq_in = list(zip(fastq1, fastq2))
+    fastq_in = [(str(f1), str(f2)) for f1,f2 in zip(fastq1, fastq2)]
     fastq_out = [
         (
-            output_prefix_path / pathlib.Path(f1).name,
-            output_prefix_path / pathlib.Path(f2).name,
+            str(output_prefix_path / pathlib.Path(f1).name),
+            str(output_prefix_path / pathlib.Path(f2).name),
         )
         for f1, f2 in fastq_in
     ]
 
     logging.info("Deduplicating FASTQ files")
-    deduplication_results = deduplicate.deduplicate_fastq(fastq_in, fastq_out, shuffle)
+    deduplication_results = deduplicate.fastq_deduplicate(fastq_in, fastq_out, shuffle)
 
     logging.info("Preparing deduplication stats")
     df_stats = (
