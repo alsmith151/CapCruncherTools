@@ -280,6 +280,7 @@ def count(
         viewpoint_sizes_df, headers="keys", tablefmt="psql", showindex=True
     )
 
+
     logging.info(f"Number of viewpoints: {len(viewpoints)}")
     logging.info(f"Number of slices per viewpoint:\n {viewpoint_sizes_df_tab}")
 
@@ -305,8 +306,6 @@ def count(
 
     counts = []
     for viewpoint in viewpoints:
-        # logging.info(f"Setting up viewpoint: {viewpoint}")
-
         counts.append(
             count_interactions.remote(
                 parquet=f"{reporters}",
@@ -356,6 +355,55 @@ def count(
 
         logging.info(f"Making final cooler at {output}")
         capcruncher.api.storage.merge_coolers(coolers, output=output)
+
+
+@cli.command("digest-fastq")
+@click.option("-i","--input-fastqs", multiple=True, required=True)
+@click.option(
+    "-r",
+    "--restriction_enzyme",
+    help="Restriction enzyme name or sequence to use for in silico digestion.",
+    required=True,
+)
+@click.option(
+    "-m",
+    "--mode",
+    help="Digestion mode. Combined (Flashed) or non-combined (PE) read pairs.",
+    type=click.Choice(["flashed", "pe"], case_sensitive=False),
+    required=True,
+)
+@click.option("-o", "--output_file", default="out.fastq.gz")
+@click.option("--minimum_slice_length", default=18, type=click.INT)
+@click.option("--stats-prefix", help="Output prefix for stats file", default="stats")
+@click.option(
+    "--sample-name",
+    help="Name of sample e.g. DOX_treated_1. Required for correct statistics.",
+    default="sampleX",
+)
+def digest_fastq(*args, **kwargs):
+    logging.info(f"Digesting FASTQ files using {kwargs['restriction_enzyme']}")
+    (stats_read, stats_hist_unfilt, stats_hist_filt, stats_hist_len) = digest.digest_fastq(
+        kwargs["input_fastqs"],
+        kwargs["restriction_enzyme"].lower(),
+        kwargs["output_file"],
+        kwargs["mode"].capitalize(),
+        kwargs["sample_name"],
+        kwargs["minimum_slice_length"],
+    )
+
+    print("Read statistics")
+    print(stats_read)
+    stats_read.write_csv(kwargs["stats_prefix"] + ".digestion.csv")
+    
+    print("Histogram of unfiltered slice numbers")
+    print(stats_hist_unfilt.sort(["slice_number", "count"]))
+    
+    print("Histogram of filtered slice numbers")
+    print(stats_hist_filt.sort(["slice_number", "count"]))
+    
+    print("Histogram of filtered slice lengths")
+    print(stats_hist_len.sort(["slice_length", "count"]))
+    
 
 
 if __name__ == "__main__":
