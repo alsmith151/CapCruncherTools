@@ -1,6 +1,6 @@
 [project]
 authors = [{ name = "asmith" }, { email = "alastair.smith@ndcls.ox.ac.uk" }]
-dependencies = ["click", "toml>=0.10.0", "pandas", "tabulate", "loguru", "capcruncher>=0.3", "ray", "pyranges", "polars"]
+dependencies = ["click", "toml>=0.10.0", "pandas", "tabulate", "loguru", "capcruncher", "ray", "pyranges", "polars"]
 name = "capcruncher-tools"
 version = "0.1.9"
 description = "Extra utilities to enhance CapCruncher"
