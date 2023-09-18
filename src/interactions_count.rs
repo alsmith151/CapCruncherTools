@@ -1,4 +1,7 @@
-use std::{error::Error, path::{PathBuf, Path}};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Ok;
 use itertools::Itertools;
@@ -12,7 +15,6 @@ use std::collections::HashMap;
 pub fn count(df: DataFrame) -> PyDataFrame {
     // Group the dataframe by parent_id
 
-
     let interaction_counts: HashMap<(i64, i64), i32> = df
         .partition_by(vec!["parent_id"], false)
         .expect("couldnt partition by parent_id")
@@ -21,10 +23,13 @@ pub fn count(df: DataFrame) -> PyDataFrame {
             let ser = &df
                 .select_series(["restriction_fragment"])
                 .expect("couldnt extract restriction_fragment column")[0];
-            let rf = ser.i64().expect("should be i64");
 
             let mut rf_combs = HashMap::new();
-            for comb in rf.into_iter().combinations(2) {
+            let rf = ser
+                .cast(&DataType::Int64)
+                .expect("Failed to cast restriction fragment id into i64");
+
+            for comb in rf.i64().unwrap().into_iter().combinations(2) {
                 let (a, b) = (comb[0], comb[1]);
 
                 match (a, b) {
