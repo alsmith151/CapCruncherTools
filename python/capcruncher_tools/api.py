@@ -36,10 +36,6 @@ def deduplicate_fastq(
     if len(fastq1) != len(fastq2):
         raise ValueError("Number of FASTQ files in R1 and R2 must be equal")
 
-    output_prefix_path = pathlib.Path(output_prefix)
-    output_prefix_path_name = output_prefix_path.name
-    
-    
     fastq_in = [(str(f1), str(f2)) for f1,f2 in zip(fastq1, fastq2)]
         
     # Create output file names
@@ -48,7 +44,7 @@ def deduplicate_fastq(
         fq_pair = []
         for fq in fqs:
             fq_name = pathlib.Path(fq).name
-            fq_pair.append(str(output_prefix_path.with_stem(f"{output_prefix_path_name}{fq_name}")))
+            fq_pair.append(f"{output_prefix}{fq_name}")
         fastq_out.append(tuple(fq_pair))
         
 
