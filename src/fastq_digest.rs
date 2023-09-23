@@ -11,22 +11,23 @@ use std::collections::HashMap;
 use std::ops::Add;
 use std::{hash::Hash, thread};
 use strum::{Display, EnumString};
+use serde::{Serialize, Deserialize};
 
 use crate::utils::{get_fastq_writer_file_handles, get_file_handles};
 
-#[derive(Debug, Clone, EnumString, Display, PartialEq)]
+#[derive(Debug, Clone, EnumString, Display, PartialEq, Serialize, Deserialize)]
 pub enum ReadType {
     Flashed,
     Pe,
 }
 
-#[derive(Debug, Clone, EnumString, Display)]
+#[derive(Debug, Clone, EnumString, Display, PartialEq, Serialize, Deserialize)]
 pub enum ReadNumber {
     One,
     Two,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DigestionHistogram {
     sample: String,
     read_type: ReadType,
@@ -94,6 +95,21 @@ impl Add for DigestionHistogram {
         }
     }
 }
+
+
+enum DigestionHistogramType {
+    Unfiltered,
+    Filtered,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DigestionHistograms{
+    unfiltered: Vec<DigestionHistogram>,
+    filtered: Vec<DigestionHistogram>, 
+    lengths: DigestionHistogram,
+}
+
+
 
 struct DigestibleRead<'a, R> {
     read: &'a R,
@@ -199,7 +215,9 @@ impl DigestibleRead<'_, bio::io::fastq::Record> {
     }
 }
 
-#[derive(Debug, Clone)]
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DigestionStats {
     sample: String,
     read_type: ReadType,
@@ -208,6 +226,8 @@ pub struct DigestionStats {
     number_of_read_pairs_filtered: u64,
     number_of_slices_unfiltered: u64,
     number_of_slices_filtered: u64,
+    histogram: DigestionHistograms,
+
 }
 
 impl DigestionStats {
@@ -220,21 +240,13 @@ impl DigestionStats {
             number_of_read_pairs_filtered: 0,
             number_of_slices_unfiltered: 0,
             number_of_slices_filtered: 0,
+            histogram: DigestionHistograms{
+                unfiltered: Vec::new(),
+                filtered: Vec::new(),
+            },
         }
     }
-    pub fn to_dataframe(&self) -> DataFrame {
-        let df = df!(
-            "sample" => &[self.sample.clone()],
-            "read_type" => &[self.read_type.to_string()],
-            "number_of_reads" => &[self.number_of_reads],
-            "number_of_read_pairs_unfiltered" => &[self.number_of_read_pairs_unfiltered],
-            "number_of_read_pairs_filtered" => &[self.number_of_read_pairs_filtered],
-            "number_of_slices_unfiltered" => &[self.number_of_slices_unfiltered],
-            "number_of_slices_filtered" => &[self.number_of_slices_filtered]
-        )
-        .expect("Error creating dataframe");
-        df
-    }
+
 }
 
 pub fn digest_fastq(
