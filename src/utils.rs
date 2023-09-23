@@ -3,6 +3,8 @@ use log::{debug, info, warn};
 use std::iter::Iterator;
 use std::path::Path;
 use std::prelude::rust_2021::*;
+use strum::{Display, EnumString};
+use serde::{Serialize, Deserialize};
 
 
 
@@ -77,4 +79,17 @@ where
         true => (true, true),
         false => (false, false),
     }
+}
+
+
+#[derive(Debug, Clone, EnumString, Display, PartialEq, Serialize, Deserialize)]
+pub enum ReadType {
+    Flashed,
+    Pe,
+}
+
+#[derive(Debug, Clone, EnumString, Display, PartialEq, Serialize, Deserialize)]
+pub enum ReadNumber {
+    One,
+    Two,
 }
