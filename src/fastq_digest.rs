@@ -138,7 +138,7 @@ pub fn digest_fastq(
     };
 
     let sample = sample.unwrap_or("digested.fastq.gz".to_string());
-    let mut digestion_stats = DigestionStats::new(sample, read_type);
+    let mut digestion_stats = DigestionStats::new(sample, read_type.clone());
 
 
 
