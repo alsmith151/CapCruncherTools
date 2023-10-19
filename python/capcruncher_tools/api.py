@@ -9,7 +9,7 @@ from loguru import logger as logging
 from typing import Union, Tuple, List, Literal, Dict
 
 from .capcruncher_tools import deduplicate, digest
-
+from capcruncher.api.statistics import DigestionStats
 
 def deduplicate_fastq(
     fastq1: List[str],
@@ -72,17 +72,17 @@ def digest_fastq(
     fastqs: List[str] = None,
     output: str = "digested.fastq.gz",
     read_type: Literal["flashed", "pe"] = "pe",
-    restriction_enzyme: str = "dpnii",
+    restriction_site: str = "dpnii",
     minimum_slice_length: int = 18,
     sample_name: str = "sample",
-) -> Dict[str, pl.DataFrame]:
+) -> DigestionStats:
     """
     Digest FASTQ files.
 
     Args:
         fastqs: List of FASTQ files.
         read_type: Read type.
-        restriction_enzyme: Restriction enzyme.
+        restriction_site: Restriction enzyme site.
         output: Output file name.
         minimum_slice_length: Minimum slice length.
         sample_name: Sample name.
@@ -91,27 +91,15 @@ def digest_fastq(
         DataFrame with digestion stats.
     """
        
-
-    (
-        stats_read,
-        stats_hist_unfilt,
-        stats_hist_filt,
-        stats_hist_length,
-    ) = digest.digest_fastq(
+    
+    return DigestionStats(**digest.digest_fastq(
         fastqs,
         output,
-        restriction_enzyme,
-        read_type,
+        restriction_site,
+        read_type.capitalize(),
         sample_name,
         minimum_slice_length,
-    )
-
-    return {
-        "stats_read_level": stats_read,
-        "stats_hist_unfilt": stats_hist_unfilt,
-        "stats_hist_filt": stats_hist_filt,
-        "stats_hist_length": stats_hist_length,
-    }
+    ))
 
 
 def digest_genome(

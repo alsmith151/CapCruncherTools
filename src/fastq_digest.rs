@@ -3,7 +3,7 @@ use bio::io;
 use bio::pattern_matching::bom::BOM;
 use crossbeam::channel;
 use indicatif::{ProgressBar, ProgressIterator};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use noodles::bam::record::cigar::Op;
 use polars::prelude::*;
 use rand::prelude::*;
@@ -14,7 +14,7 @@ use std::ops::Add;
 use std::{hash::Hash, thread};
 use strum::{Display, EnumString};
 
-use crate::digest::{DigestibleRead};
+use crate::digest::DigestibleRead;
 use crate::utils::{get_fastq_writer_file_handles, get_file_handles, ReadNumber, ReadType};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -113,6 +113,26 @@ impl DigestionStats {
     }
 }
 
+#[derive(Debug, Clone, EnumString, Display, PartialEq, Serialize, Deserialize)]
+pub enum ValidDigestionParams {
+    Valid,
+    Invalid,
+    InvalidNoEnzyme,
+}
+
+impl ValidDigestionParams {
+    pub fn validate(n_files: usize, read_type: ReadType) -> Self {
+        match (n_files, read_type) {
+            (1, ReadType::Flashed) => ValidDigestionParams::Valid,
+            (2, ReadType::Pe) => ValidDigestionParams::Valid,
+            _ => {
+                error!("Invalid combination of input files and read type");
+                ValidDigestionParams::Invalid
+            }
+        }
+    }
+}
+
 pub fn digest_fastq(
     fastqs: Vec<String>,
     output: String,
@@ -120,7 +140,7 @@ pub fn digest_fastq(
     read_type: ReadType,
     min_slice_length: Option<usize>,
     sample: Option<String>,
-) -> anyhow::Result<(DigestionStats,)> {
+) -> anyhow::Result<DigestionStats> {
     let (slice_tx, slice_rx) = channel::unbounded();
     let (stats_tx, stats_rx) = channel::unbounded();
 
@@ -139,8 +159,6 @@ pub fn digest_fastq(
 
     let sample = sample.unwrap_or("digested.fastq.gz".to_string());
     let mut digestion_stats = DigestionStats::new(sample, read_type.clone());
-
-
 
     let digestion_thread = std::thread::spawn(move || {
         let mut handles_reader =
@@ -165,7 +183,7 @@ pub fn digest_fastq(
 
                     // Digest the read
                     let slices = digestible_read.digest();
-                    
+
                     // Update stats
                     digestion_stats.read_stats.filtered.read1 += match slices.len() > 0 {
                         true => 1,
@@ -179,19 +197,25 @@ pub fn digest_fastq(
                     digestion_stats.slice_stats.filtered +=
                         digestible_read.n_slices_filtered as u64;
 
-
                     // Update histograms
 
-                    digestion_stats.histograms.unfiltered.read1.add_entry(
-                        digestible_read.n_slices_unfiltered as u64,
-                    );
-                    digestion_stats.histograms.filtered.read1.add_entry(
-                        digestible_read.n_slices_filtered as u64,
-                    );
-
+                    digestion_stats
+                        .histograms
+                        .unfiltered
+                        .read1
+                        .add_entry(digestible_read.n_slices_unfiltered as u64);
+                    digestion_stats
+                        .histograms
+                        .filtered
+                        .read1
+                        .add_entry(digestible_read.n_slices_filtered as u64);
 
                     for slice in slices {
-                        digestion_stats.histograms.lengths.read1.add_entry(slice.seq().len() as u64);
+                        digestion_stats
+                            .histograms
+                            .lengths
+                            .read1
+                            .add_entry(slice.seq().len() as u64);
                         slice_tx.send(slice).unwrap();
                     }
                 })
@@ -210,7 +234,12 @@ pub fn digest_fastq(
                         // Update number of reads
                         digestion_stats.read_stats.unfiltered.read1 += 1;
                         digestion_stats.read_stats.unfiltered.read2 = Some(
-                            digestion_stats.read_stats.unfiltered.read2.unwrap() + 1,
+                            digestion_stats
+                                .read_stats
+                                .unfiltered
+                                .read2
+                                .expect("Read 2 not present")
+                                + 1,
                         );
 
                         let mut digestible_read_1 = DigestibleRead::new(
@@ -244,33 +273,48 @@ pub fn digest_fastq(
                                 (0, 0) => 0,
                                 _ => 1,
                             });
-                        
+
                         // Update slice stats
                         digestion_stats.slice_stats.unfiltered +=
                             digestible_read_1.n_slices_unfiltered as u64
                                 + digestible_read_2.n_slices_unfiltered as u64;
-                        
-                        digestion_stats.slice_stats.filtered +=
-                            digestible_read_1.n_slices_filtered as u64
-                                + digestible_read_2.n_slices_filtered as u64;
-                        
+
+                        digestion_stats.slice_stats.filtered += digestible_read_1.n_slices_filtered
+                            as u64
+                            + digestible_read_2.n_slices_filtered as u64;
+
                         // Update histograms
-                        digestion_stats.histograms.unfiltered.read1.add_entry(
-                            digestible_read_1.n_slices_unfiltered as u64,
-                        );
+                        digestion_stats
+                            .histograms
+                            .unfiltered
+                            .read1
+                            .add_entry(digestible_read_1.n_slices_unfiltered as u64);
 
-                        digestion_stats.histograms.unfiltered.read2.as_mut().unwrap().add_entry(
-                            digestible_read_2.n_slices_unfiltered as u64,
-                        );
-
+                        digestion_stats
+                            .histograms
+                            .unfiltered
+                            .read2
+                            .as_mut()
+                            .unwrap()
+                            .add_entry(digestible_read_2.n_slices_unfiltered as u64);
 
                         for slice in slices_1.into_iter() {
-                            digestion_stats.histograms.lengths.read1.add_entry(slice.seq().len() as u64);
+                            digestion_stats
+                                .histograms
+                                .lengths
+                                .read1
+                                .add_entry(slice.seq().len() as u64);
                             slice_tx.send(slice).unwrap();
                         }
 
                         for slice in slices_2.into_iter() {
-                            digestion_stats.histograms.lengths.read2.as_mut().unwrap().add_entry(slice.seq().len() as u64);
+                            digestion_stats
+                                .histograms
+                                .lengths
+                                .read2
+                                .as_mut()
+                                .unwrap()
+                                .add_entry(slice.seq().len() as u64);
                             slice_tx.send(slice).unwrap();
                         }
                     })
@@ -278,9 +322,7 @@ pub fn digest_fastq(
             _ => {}
         }
         stats_tx
-            .send((
-                digestion_stats,
-            ))
+            .send((digestion_stats,))
             .expect("Error sending stats");
         drop(stats_tx);
         drop(slice_tx);
@@ -290,9 +332,9 @@ pub fn digest_fastq(
         fastq_writer.write_record(&slice).unwrap();
     }
 
-    digestion_thread.join().unwrap();
+    digestion_thread.join().expect("Error finalizing thread");
 
-    let stats = stats_rx.recv().unwrap();
+    let stats = stats_rx.recv().expect("Error receiving stats").0;
 
     Ok(stats)
 }

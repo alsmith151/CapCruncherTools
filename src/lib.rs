@@ -1,4 +1,6 @@
 use anyhow::Ok;
+use fastq_digest::ValidDigestionParams;
+use log::{debug, error, info, warn};
 use polars::prelude::*;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
@@ -6,14 +8,14 @@ use pythonize::pythonize;
 use std::str::FromStr;
 
 mod alignment;
+mod digest;
 mod fastq_deduplication;
 mod fastq_digest;
 mod genome_digest;
 mod interactions_count;
 mod utils;
-mod digest;
 
-use crate::utils::{ReadType, ReadNumber};
+use crate::utils::{ReadNumber, ReadType};
 
 // Rust based. Deduplicate FASTQ files based on exact sequence matches. Returns a dictionary with statistics."
 #[pyfunction]
@@ -89,9 +91,22 @@ fn digest_fastq_py(
     read_type: String,
     sample: String,
     min_slice_length: Option<usize>,
-) -> Py<PyAny> {
+) -> PyResult<Py<PyAny>> {
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
+
+
+
+    let valid_params = ValidDigestionParams::validate(
+        fastqs.len(),
+        ReadType::from_str(&read_type).expect("Invalid read type"),
+    );
+
+    if valid_params == ValidDigestionParams::Invalid {
+        return std::result::Result::Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            format!("Invalid parameters: {:?}", valid_params),
+        ));
+    }
 
     // Run the digest
     let res = fastq_digest::digest_fastq(
@@ -107,11 +122,11 @@ fn digest_fastq_py(
         Result::Ok(stats) => {
             // Convert statistics to Python
             let py_stats = Python::with_gil(|py| pythonize(py, &stats).unwrap());
-            py_stats
+            std::result::Result::Ok(py_stats)
         }
         Err(e) => {
-            println!("Error: {}", e);
-            std::process::exit(1);
+            error!("Error: {}", e);
+            std::result::Result::Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Error: {}", e)))
         }
     }
 }
