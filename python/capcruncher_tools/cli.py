@@ -382,7 +382,7 @@ def count(
 )
 def digest_fastq(*args, **kwargs):
     logging.info(f"Digesting FASTQ files using {kwargs['restriction_enzyme']}")
-    (stats_read, stats_hist_unfilt, stats_hist_filt, stats_hist_len) = digest.digest_fastq(
+    stats = digest.digest_fastq(
         kwargs["input_fastqs"],
         kwargs["restriction_enzyme"].lower(),
         kwargs["output_file"],
@@ -391,19 +391,7 @@ def digest_fastq(*args, **kwargs):
         kwargs["minimum_slice_length"],
     )
 
-    print("Read statistics")
-    print(stats_read)
-    stats_read.write_csv(kwargs["stats_prefix"] + ".digestion.csv")
-    
-    print("Histogram of unfiltered slice numbers")
-    print(stats_hist_unfilt.sort(["slice_number", "count"]))
-    
-    print("Histogram of filtered slice numbers")
-    print(stats_hist_filt.sort(["slice_number", "count"]))
-    
-    print("Histogram of filtered slice lengths")
-    print(stats_hist_len.sort(["slice_length", "count"]))
-    
+
 
 
 if __name__ == "__main__":

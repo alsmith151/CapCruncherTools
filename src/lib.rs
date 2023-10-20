@@ -1,4 +1,6 @@
 use anyhow::Ok;
+use fastq_digest::ValidDigestionParams;
+use log::{debug, error, info, warn};
 use polars::prelude::*;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
@@ -6,11 +8,14 @@ use pythonize::pythonize;
 use std::str::FromStr;
 
 mod alignment;
+mod digest;
 mod fastq_deduplication;
 mod fastq_digest;
 mod genome_digest;
 mod interactions_count;
 mod utils;
+
+use crate::utils::{ReadNumber, ReadType};
 
 // Rust based. Deduplicate FASTQ files based on exact sequence matches. Returns a dictionary with statistics."
 #[pyfunction]
@@ -86,61 +91,42 @@ fn digest_fastq_py(
     read_type: String,
     sample: String,
     min_slice_length: Option<usize>,
-) -> PyResult<(PyDataFrame, PyDataFrame, PyDataFrame, PyDataFrame)> {
+) -> PyResult<Py<PyAny>> {
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
+
+
+
+    let valid_params = ValidDigestionParams::validate(
+        fastqs.len(),
+        ReadType::from_str(&read_type).expect("Invalid read type"),
+    );
+
+    if valid_params == ValidDigestionParams::Invalid {
+        return std::result::Result::Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            format!("Invalid parameters: {:?}", valid_params),
+        ));
+    }
 
     // Run the digest
     let res = fastq_digest::digest_fastq(
         fastqs,
         output,
         restriction_site.to_lowercase(),
-        fastq_digest::ReadType::from_str(&read_type).expect("Invalid read type"),
+        ReadType::from_str(&read_type).expect("Invalid read type"),
         min_slice_length,
         Some(sample),
     );
 
     match res {
-        Result::Ok((read_stats, hist_unfilt, hist_filt, hist_len)) => {
-            // Create a DataFrame with the read statistics
-            let df_read = read_stats.to_dataframe();
-            let df_read_py = PyDataFrame(df_read);
-
-            // Create a DataFrame with the unfiltered histogram
-            let df_hist_unfilt = hist_unfilt
-                .iter()
-                .map(|h| h.to_dataframe(Some("slice_number")))
-                .reduce(|a, b| a.vstack(&b).unwrap())
-                .expect("Error during histogram creation");
-            let df_hist_unfilt_py = PyDataFrame(df_hist_unfilt);
-
-            // Create a DataFrame with the filtered histogram
-            let df_hist_filt = hist_filt
-                .iter()
-                .map(|h| h.to_dataframe(Some("slice_number")))
-                .reduce(|a, b| a.vstack(&b).unwrap())
-                .expect("Error during histogram creation");
-            let df_hist_filt_py = PyDataFrame(df_hist_filt);
-
-            // Create a DataFrame with the length histogram
-            let df_hist_len = hist_len
-                .iter()
-                .map(|h| h.to_dataframe(Some("slice_length")))
-                .reduce(|a, b| a.vstack(&b).unwrap())
-                .expect("Error during histogram creation");
-            let df_hist_len_py = PyDataFrame(df_hist_len);
-
-            // Return a tuple of the DataFrames
-            Result::Ok((
-                df_read_py,
-                df_hist_unfilt_py,
-                df_hist_filt_py,
-                df_hist_len_py,
-            ))
+        Result::Ok(stats) => {
+            // Convert statistics to Python
+            let py_stats = Python::with_gil(|py| pythonize(py, &stats).unwrap());
+            std::result::Result::Ok(py_stats)
         }
         Err(e) => {
-            println!("Error: {}", e);
-            std::process::exit(1);
+            error!("Error: {}", e);
+            std::result::Result::Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Error: {}", e)))
         }
     }
 }
