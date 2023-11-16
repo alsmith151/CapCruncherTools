@@ -8,6 +8,7 @@ use noodles::bam::record::cigar::Op;
 use polars::prelude::*;
 use rand::prelude::*;
 use rayon::prelude::*;
+use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Add;
@@ -23,10 +24,44 @@ struct SliceNumberStats {
     filtered: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 struct ReadPairStat<V> {
     read1: V,
     read2: Option<V>,
+}
+
+impl Serialize for ReadPairStat<u64> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let read2 = match &self.read2 {
+            Some(v) => v,
+            None => &0,
+        };
+
+        let mut s = serializer.serialize_struct("ReadPairStat", 2)?;
+        s.serialize_field("read1", &self.read1)?;
+        s.serialize_field("read2", &read2)?;
+        s.end()
+    }
+}
+
+impl Serialize for ReadPairStat<Histogram> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let read2 = match &self.read2 {
+            Some(v) => v.to_owned(),
+            None => Histogram::new("slice_number".to_string()),
+        };
+
+        let mut s = serializer.serialize_struct("ReadPairStat", 2)?;
+        s.serialize_field("read1", &self.read1)?;
+        s.serialize_field("read2", &read2)?;
+        s.end()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -268,10 +303,11 @@ pub fn digest_fastq(
                                 (0, 0) => 0,
                                 _ => 1,
                             };
+
                         digestion_stats.read_stats.filtered.read2 =
                             Some(match (slices_1.len(), slices_2.len()) {
-                                (0, 0) => 0,
-                                _ => 1,
+                                (0, 0) => digestion_stats.read_stats.filtered.read2.unwrap(),
+                                _ => digestion_stats.read_stats.filtered.read2.unwrap() + 1,
                             });
 
                         // Update slice stats
@@ -284,6 +320,8 @@ pub fn digest_fastq(
                             + digestible_read_2.n_slices_filtered as u64;
 
                         // Update histograms
+
+                        // Unfiltered
                         digestion_stats
                             .histograms
                             .unfiltered
@@ -297,6 +335,21 @@ pub fn digest_fastq(
                             .as_mut()
                             .unwrap()
                             .add_entry(digestible_read_2.n_slices_unfiltered as u64);
+
+                        // Filtered
+                        digestion_stats
+                            .histograms
+                            .filtered
+                            .read1
+                            .add_entry(digestible_read_1.n_slices_filtered as u64);
+
+                        digestion_stats
+                            .histograms
+                            .filtered
+                            .read2
+                            .as_mut()
+                            .unwrap()
+                            .add_entry(digestible_read_2.n_slices_filtered as u64);
 
                         for slice in slices_1.into_iter() {
                             digestion_stats
@@ -385,6 +438,8 @@ mod tests {
             None,
             Some("test_sample".to_string()),
         )?;
+
+        println!("{:?}", stats);
 
         assert!(std::path::Path::new(output).exists());
         // assert_eq!(
