@@ -47,7 +47,7 @@ pub fn count(df: DataFrame) -> PyDataFrame {
             HashMap::new(),
             |mut a: HashMap<(i64, i64), i32>, b: HashMap<(i64, i64), i32>| {
                 for (k, v) in b {
-                    *a.entry(k).or_insert(1) += v;
+                    *a.entry(k).or_insert(0) += v;
                 }
                 a
             },
