@@ -2,7 +2,7 @@
 authors = [{ name = "asmith" }, { email = "alastair.smith@ndcls.ox.ac.uk" }]
 dependencies = ["click", "toml>=0.10.0", "pandas>=2.0.1", "tabulate", "loguru", "capcruncher>0.3.0", "ray>=2.7.0", "pyranges", "polars"]
 name = "capcruncher-tools"
-version = "0.1.16"
+version = "0.1.7"
 description = "Extra utilities to enhance CapCruncher"
 readme = "README.md"
 requires-python = ">=3.8"
