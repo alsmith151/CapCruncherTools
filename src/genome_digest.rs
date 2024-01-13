@@ -11,7 +11,7 @@ use std::prelude::rust_2021::*;
 
 struct DigestedFastaEntry<'a> {
     name: String,
-    sequence: &'a [u8],
+    sequence: &'a Vec<u8>,
     restriction_site: &'a [u8],
     remove_recognition_site: bool,
     min_slice_size: Option<usize>,
@@ -21,7 +21,7 @@ struct DigestedFastaEntry<'a> {
 impl<'a> DigestedFastaEntry<'a> {
     fn new(
         name: String,
-        sequence: &'a &[u8],
+        sequence: &'a Vec<u8>,
         restriction_site: &'a [u8],
         remove_recognition_site: bool,
         min_slice_size: Option<usize>,
@@ -90,7 +90,7 @@ pub fn digest_fasta(
     let mut bed_writer = bed::Writer::to_file(output).expect("Error opening BED output file");
 
     let min_slice_length = min_slice_length.unwrap_or(0);
-    let restriction_site = restriction_site;
+    let restriction_site = restriction_site.to_lowercase();
 
     let n_threads = n_threads.unwrap_or(1);
 
@@ -107,7 +107,10 @@ pub fn digest_fasta(
 
         std::thread::spawn(move || {
             for entry in recv_raw {
-                let sequence = entry.seq();
+
+
+                let sequence = entry.seq().to_ascii_lowercase();
+
                 let mut digested_entry = DigestedFastaEntry::new(
                     entry.id().to_string(),
                     &sequence,
@@ -159,6 +162,8 @@ pub fn digest_fasta(
 
     Ok(())
 }
+
+
 
 // Test fasa digestion
 #[cfg(test)]
