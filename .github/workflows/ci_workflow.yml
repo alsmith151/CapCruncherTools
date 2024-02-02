@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          pip install capcruncher-tools --find-links dist --force-reinstall
+          pip install capcruncher-tools[full] --find-links dist --force-reinstall
           pip install pytest
           pytest
       - name: pytest
