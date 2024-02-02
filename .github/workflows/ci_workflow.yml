@@ -62,7 +62,7 @@ jobs:
             pip3 install -U pip pytest
           run: |
             set -e
-            pip3 install capcruncher-tools --find-links dist --force-reinstall
+            pip install .[full] --find-links dist --force-reinstall
             pytest
 
   macos:
