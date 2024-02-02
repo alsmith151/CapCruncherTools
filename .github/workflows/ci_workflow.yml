@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          pip install .[full] --find-links dist --force-reinstall
+          pip install capcruncher-tools --find-links dist --force-reinstall
           pip install pytest
           pytest
       - name: pytest
@@ -62,7 +62,7 @@ jobs:
             pip3 install -U pip pytest
           run: |
             set -e
-            pip install .[full] --find-links dist --force-reinstall
+            pip install capcruncher-tools --find-links dist --force-reinstall
             pytest
 
   macos:
@@ -91,7 +91,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          pip install .[full] --find-links dist --force-reinstall
+          pip install capcruncher-tools --find-links dist --force-reinstall
           pip install pytest
           pytest
 

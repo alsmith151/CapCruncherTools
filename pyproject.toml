@@ -36,7 +36,7 @@ name = "capcruncher_tools.capcruncher_tools_rs"
 [project.scripts]
 capcruncher-tools = "capcruncher_tools.cli:cli"
 
-[tool.setuptools.optional-dependencies]
+[optional-dependencies]
 full = ["capcruncher>=0.3.11"]
 
 
