@@ -9,7 +9,7 @@ dependencies = [
     "ray>=2.7.0",
     "pyranges",
     "polars",
-    "cooler",
+    "cooler<=0.9.3",
 ]
 name = "capcruncher-tools"
 version = "0.2.0"
