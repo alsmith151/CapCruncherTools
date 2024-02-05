@@ -1,28 +1,27 @@
 [project]
 authors = [{ name = "asmith" }, { email = "alastair.smith@ndcls.ox.ac.uk" }]
-dependencies = ["click", "toml>=0.10.0", "pandas>=2.0.1", "tabulate", "loguru", "capcruncher>0.3.0", "ray>=2.7.0", "pyranges", "polars"]
 name = "capcruncher-tools"
 version = "0.2.0"
 description = "Extra utilities to enhance CapCruncher"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
-# dynamic = ["version", "dependencies"]
+dynamic = ["dependencies"]
 
 
 [build-system]
 build-backend = "maturin"
-requires = [
-    "maturin>=0.14,<1.2.0",
-    "setuptools>=61.0",
-    "wheel",
-]
+requires = ["maturin>=0.14,<1.2.0", "setuptools>=61.0", "wheel"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"
 profile = "release"
 compatibility = "linux"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
 
 [package.metadata.maturin]
 name = "capcruncher_tools.capcruncher_tools_rs"
@@ -31,9 +30,9 @@ name = "capcruncher_tools.capcruncher_tools_rs"
 [project.scripts]
 capcruncher-tools = "capcruncher_tools.cli:cli"
 
+[optional-dependencies]
+full = ["capcruncher>=0.3.11"]
+
+
 [project.urls]
 repository = "https://github.com/alsmith151/CapCruncherTools"
-
-# [tool.setuptools_scm]
-# local_scheme = "no-local-version"
-# write_to = "capcruncher/_version.py"

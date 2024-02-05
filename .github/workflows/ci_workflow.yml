@@ -46,7 +46,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          pip install capcruncher-tools --find-links dist --force-reinstall
+          pip install -r requirements.txt
+          pip install capcruncher pybedtools pysam ujson tqdm pyarrow --no-deps
+          pip install capcruncher-tools --find-links dist --force-reinstall --no-index
           pip install pytest
           pytest
       - name: pytest
@@ -62,7 +64,9 @@ jobs:
             pip3 install -U pip pytest
           run: |
             set -e
-            pip3 install capcruncher-tools --find-links dist --force-reinstall
+            pip install -r requirements.txt
+            pip install capcruncher pybedtools pysam ujson tqdm pyarrow --no-deps
+            pip install capcruncher-tools --find-links dist --force-reinstall --no-index
             pytest
 
   macos:
@@ -91,7 +95,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          pip install capcruncher-tools --find-links dist --force-reinstall
+          pip install -r requirements.txt
+          pip install capcruncher pybedtools pysam ujson tqdm pyarrow --no-deps
+          pip install capcruncher-tools --find-links dist --force-reinstall --no-index
           pip install pytest
           pytest
 
