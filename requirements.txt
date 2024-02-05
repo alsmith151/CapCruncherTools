@@ -1,0 +1,9 @@
+click
+toml>=0.10.0
+pandas>=2.0.1
+tabulate
+loguru
+ray>=2.7.0
+pyranges
+polars
+cooler<=0.9.3

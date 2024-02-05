@@ -1,22 +1,12 @@
 [project]
 authors = [{ name = "asmith" }, { email = "alastair.smith@ndcls.ox.ac.uk" }]
-dependencies = [
-    "click",
-    "toml>=0.10.0",
-    "pandas>=2.0.1",
-    "tabulate",
-    "loguru",
-    "ray>=2.7.0",
-    "pyranges",
-    "polars",
-    "cooler<=0.9.3",
-]
 name = "capcruncher-tools"
 version = "0.2.0"
 description = "Extra utilities to enhance CapCruncher"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
+dynamic = ["dependencies"]
 
 
 [build-system]
@@ -28,6 +18,10 @@ features = ["pyo3/extension-module"]
 python-source = "python"
 profile = "release"
 compatibility = "linux"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
 
 [package.metadata.maturin]
 name = "capcruncher_tools.capcruncher_tools_rs"

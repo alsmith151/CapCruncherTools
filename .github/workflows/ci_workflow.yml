@@ -46,6 +46,7 @@ jobs:
         shell: bash
         run: |
           set -e
+          pip install -r requirements.txt
           pip install capcruncher-tools --find-links dist --force-reinstall --no-index
           pip install pytest
           pytest
@@ -62,6 +63,7 @@ jobs:
             pip3 install -U pip pytest
           run: |
             set -e
+            pip install -r requirements.txt
             pip install capcruncher-tools --find-links dist --force-reinstall --no-index
             pytest
 
@@ -91,6 +93,7 @@ jobs:
         shell: bash
         run: |
           set -e
+          pip install -r requirements.txt
           pip install capcruncher-tools --find-links dist --force-reinstall --no-index
           pip install pytest
           pytest
