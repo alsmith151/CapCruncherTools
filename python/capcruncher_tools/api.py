@@ -217,9 +217,15 @@ def count_interactions(
             "Name": "name",
         }
     )
-    # Always coerce chromosomes to a string, instead of a mixed type:
-    # See: https://github.com/sims-lab/CapCruncher/issues/234#issuecomment-1954020172
-    bins["chrom"] = bins["chrom"].astype(str)
+    # Note that fragment_map does not contain headers, so PyRanges's
+    # read_bed function cannot cast the Chromosome column implicitly
+    # into a category type as it normally would.
+    ## See: https://github.com/pyranges/pyranges/issues/375
+    #
+    # For now, we have to do this ourselves: casting first to string
+    # and then category.
+    ## See: https://github.com/sims-lab/CapCruncher/issues/234
+    bins["chrom"] = bins["chrom"].astype("string").astype("category")
     bins_ref = ray.put(bins)
 
     # Fix reporters path
