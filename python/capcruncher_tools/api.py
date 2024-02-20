@@ -217,6 +217,9 @@ def count_interactions(
             "Name": "name",
         }
     )
+    # Always coerce chromosomes to a string, instead of a mixed type:
+    # See: https://github.com/sims-lab/CapCruncher/issues/234#issuecomment-1954020172
+    bins["chrom"] = bins["chrom"].astype(str)
     bins_ref = ray.put(bins)
 
     # Fix reporters path
