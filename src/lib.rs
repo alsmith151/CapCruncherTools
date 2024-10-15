@@ -1,4 +1,4 @@
-use anyhow::Ok;
+
 use fastq_digest::ValidDigestionParams;
 use log::{debug, error, info, warn};
 use polars::prelude::*;
@@ -32,9 +32,6 @@ fn deduplicate_fastq_py(
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
 
-    // // Get the Python GIL
-    // let gil = Python::acquire_gil();
-    // let py = gil.python();
 
     let mut deduplicator = fastq_deduplication::FastqDeduplicator::new(fq_in, fq_out, shuffle);
 
@@ -43,10 +40,15 @@ fn deduplicate_fastq_py(
         .write_unique_reads()
         .expect("Error during deduplication");
 
-    // Convert statistics to Python
-    let py_deduplication_results =
-        Python::with_gil(|py| pythonize(py, &deduplication_results).unwrap());
+    // // Convert statistics to Python
+    let py_deduplication_results = Python::with_gil(|py| {
+        
+        let obj = pythonize(py, &deduplication_results).unwrap();
+        obj.unbind()
+    });
+
     py_deduplication_results
+
 }
 
 // Rust based. Digest a FASTA file with a restriction enzyme. Returns a BED file with the digested fragments.
@@ -121,8 +123,8 @@ fn digest_fastq_py(
     match res {
         Result::Ok(stats) => {
             // Convert statistics to Python
-            let py_stats = Python::with_gil(|py| pythonize(py, &stats).unwrap());
-            std::result::Result::Ok(py_stats)
+            let py_stats = Python::with_gil(|py| pythonize(py, &stats).unwrap().unbind());
+            std::result::Result::Ok(py_stats.into())
         }
         Err(e) => {
             error!("Error: {}", e);
@@ -139,27 +141,29 @@ fn count_interactions(df: PyDataFrame) -> PyDataFrame {
     df
 }
 
+// #[pymodule]
+
 #[pymodule]
 #[pyo3(name = "capcruncher_tools")]
-fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
+fn capcruncher_tools(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Initialize the logger
     pyo3_log::init();
 
     // Create a submodule
-    let deduplicate = PyModule::new(_py, "deduplicate")?;
+    let deduplicate = PyModule::new_bound(m.py(), "deduplicate")?;
     deduplicate.add_function(wrap_pyfunction!(deduplicate_fastq_py, m)?)?;
-    m.add_submodule(deduplicate)?;
+    m.add_submodule(&deduplicate)?;
 
     // Create a submodule
-    let digest = PyModule::new(_py, "digest")?;
+    let digest = PyModule::new_bound(m.py(), "digest")?;
     digest.add_function(wrap_pyfunction!(digest_fasta_py, m)?)?;
     digest.add_function(wrap_pyfunction!(digest_fastq_py, m)?)?;
-    m.add_submodule(digest)?;
+    m.add_submodule(&digest)?;
 
     // Create a submodule
-    let interactions = PyModule::new(_py, "interactions")?;
+    let interactions = PyModule::new_bound(m.py(), "interactions")?;
     interactions.add_function(wrap_pyfunction!(count_interactions, m)?)?;
-    m.add_submodule(interactions)?;
+    m.add_submodule(&interactions)?;
 
     Result::Ok(())
 }
