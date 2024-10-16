@@ -4,9 +4,6 @@ import pandas as pd
 import polars as pl
 import ray
 
-pl.enable_string_cache(True)
-
-
 def get_viewpoint(
     parquet: pathlib.Path,
     viewpoint: str,
@@ -16,25 +13,29 @@ def get_viewpoint(
     subsample: float = 0,
     scan_low_memory: bool = False,
 ) -> pl.DataFrame:
-    if not part:
-        df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
-            pl.col("viewpoint") == viewpoint
-        )
+    
 
-    else:
-        df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
-            (pl.col("viewpoint") == viewpoint) & (pl.col("bam") == part)
-        )
+    with pl.StringCache():
 
-    if remove_viewpoint:
-        df = df.filter(pl.col("capture_count") == 0)
+        if not part:
+            df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
+                pl.col("viewpoint") == viewpoint
+            )
 
-    if remove_exclusions:
-        df = df.filter(pl.col("exclusion") != pl.col("viewpoint"))
+        else:
+            df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
+                (pl.col("viewpoint") == viewpoint) & (pl.col("bam") == part)
+            )
 
-    df = df.select(["parent_id", "restriction_fragment"])
+        if remove_viewpoint:
+            df = df.filter(pl.col("capture_count") == 0)
 
-    return df.collect()
+        if remove_exclusions:
+            df = df.filter(pl.col("exclusion") != pl.col("viewpoint"))
+
+        df = df.select(["parent_id", "restriction_fragment"])
+
+        return df.collect()
 
 
 def get_counts(df: pl.DataFrame, as_pandas: bool = True) -> pd.DataFrame:
