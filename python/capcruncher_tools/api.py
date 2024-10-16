@@ -6,10 +6,9 @@ import pandas as pd
 import polars as pl
 import tabulate
 from loguru import logger as logging
-from typing import Union, Tuple, List, Literal, Dict
+from typing import Union, Tuple, List, Literal, Dict, Any
 
 from .capcruncher_tools import deduplicate, digest
-from capcruncher.api.statistics import DigestionStats
 
 def deduplicate_fastq(
     fastq1: List[str],
@@ -75,7 +74,7 @@ def digest_fastq(
     restriction_site: str = "dpnii",
     minimum_slice_length: int = 18,
     sample_name: str = "sample",
-) -> DigestionStats:
+):
     """
     Digest FASTQ files.
 
@@ -90,6 +89,8 @@ def digest_fastq(
     Returns:
         DataFrame with digestion stats.
     """
+    from capcruncher.api.statistics import DigestionStats
+
        
     
     return DigestionStats(**digest.digest_fastq(
