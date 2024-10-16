@@ -1,7 +1,8 @@
 capcruncher 
+pyarrow
 pybedtools 
 pysam 
-ujson 
-tqdm 
-pyarrow
 pytest
+ray
+tqdm 
+ujson 
