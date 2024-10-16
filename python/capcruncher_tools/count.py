@@ -14,7 +14,7 @@ def get_viewpoint(
     scan_low_memory: bool = False,
 ) -> pl.DataFrame:
     
-
+    # Updated for the new version of polars
     with pl.StringCache():
 
         if not part:
