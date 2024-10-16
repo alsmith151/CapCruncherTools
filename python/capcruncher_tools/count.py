@@ -1,7 +1,5 @@
 import pathlib
 from typing import List, Literal, Tuple, Union
-
-import capcruncher.api as cc
 import pandas as pd
 import polars as pl
 import ray
@@ -111,6 +109,8 @@ def make_cooler(
     **kwargs,
 ) -> str:
     viewpoint_name, counts = future
+
+    import capcruncher.api as cc
 
     return cc.storage.create_cooler_cc(
         output_prefix=output_prefix,

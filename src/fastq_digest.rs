@@ -4,7 +4,6 @@ use bio::pattern_matching::bom::BOM;
 use crossbeam::channel;
 use indicatif::{ProgressBar, ProgressIterator};
 use log::{debug, error, info, warn};
-use noodles::bam::record::cigar::Op;
 use polars::prelude::*;
 use rand::prelude::*;
 use rayon::prelude::*;

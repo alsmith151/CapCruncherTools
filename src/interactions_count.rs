@@ -55,21 +55,21 @@ pub fn count(df: DataFrame) -> PyDataFrame {
 
     let df_counts = DataFrame::new(vec![
         Series::new(
-            "bin1_id",
+            "bin1_id".into(),
             interaction_counts
                 .keys()
                 .map(|(a, _)| *a)
                 .collect::<Vec<_>>(),
         ),
         Series::new(
-            "bin2_id",
+            "bin2_id".into(),
             interaction_counts
                 .keys()
                 .map(|(_, b)| *b)
                 .collect::<Vec<_>>(),
         ),
         Series::new(
-            "count",
+            "count".into(),
             interaction_counts.values().map(|v| *v).collect::<Vec<_>>(),
         ),
     ])

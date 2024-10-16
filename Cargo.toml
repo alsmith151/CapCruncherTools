@@ -8,27 +8,27 @@ edition = "2021"
 [dependencies]
 ahash = "0.8.2"
 anyhow = "*"
-bio = "1.2.0"
+bio = "2.0.3"
 crossbeam = "0.8.2"
 ctrlc = "*"
 fastq = "*"
-hashbrown = {version = "*", features = ["rayon"]}
+hashbrown = {version = "0.15.0", features = ["rayon"]}
 indicatif = {version = "*", features = ["rayon"]}
-itertools = "0.10.5"
+itertools = "0.13.0"
 log = "*"
 niffler = "2.3.2"
-noodles = { version = "0.20.0", features = ["fasta", "bam"] }
-polars = {version = "*", features = ["lazy", "parquet", "partition_by", "dtype-categorical"]}
-pyo3 = { version = "*", features = ["abi3-py37", "serde", "extension-module", "serde", "hashbrown"] }
+noodles = { version = "0.83.0", features = ["fasta", "bam"] }
+polars = {version = "0.43.0", features = ["lazy", "parquet", "partition_by"]}
+pyo3 = { version = "0.22.4", features = ["abi3-py37", "serde", "extension-module", "hashbrown"] }
 pyo3-log = "*"
-pyo3-polars = "*"
-pythonize = "*"
+pyo3-polars = "0.17.0"
+pythonize = "0.22.0"
 rand = "0.8.5"
 rayon = "*"
 serde = { version = "1.*", features = ["derive"] }
 tempfile = "3.3.0"
 twox-hash = "1.6.2"
-strum = { version = "0.25", features = ["derive"] }
+strum = { version = "0.26", features = ["derive"] }
 
 
 [lib]
