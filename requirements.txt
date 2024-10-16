@@ -7,3 +7,4 @@ ray>=2.7.0
 pyranges
 polars
 cooler<=0.9.3
+setuptools>=75.2.0
