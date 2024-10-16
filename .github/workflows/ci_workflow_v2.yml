@@ -58,7 +58,7 @@ jobs:
           python3 -m venv .venv
           source .venv/bin/activate
           uv pip install . --find-links dist --force-reinstall 
-          pip install -r test_requirements.txt
+          uv pip install -r test_requirements.txt
           pytest
 
   macos:
@@ -97,7 +97,7 @@ jobs:
           python3 -m venv .venv
           source .venv/bin/activate
           uv pip install . --find-links dist --force-reinstall 
-          pip install -r test_requirements.txt
+          uv pip install -r test_requirements.txt
           pytest
 
   sdist:
