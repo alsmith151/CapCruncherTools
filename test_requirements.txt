@@ -1,0 +1,8 @@
+capcruncher 
+pyarrow
+pybedtools 
+pysam 
+pytest
+ray
+tqdm 
+ujson 
