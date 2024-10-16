@@ -57,7 +57,7 @@ jobs:
           set -e
           python3 -m venv .venv
           source .venv/bin/activate
-          uv pip install capcruncher-tools --index-url dist --force-reinstall
+          uv pip install . --find-links dist --force-reinstall 
           pip install -r test_requirements.txt
           pytest
 
@@ -96,7 +96,7 @@ jobs:
           set -e
           python3 -m venv .venv
           source .venv/bin/activate
-          uv pip install capcruncher-tools --index-url dist --force-reinstall
+          uv pip install . --find-links dist --force-reinstall 
           pip install -r test_requirements.txt
           pytest
 
