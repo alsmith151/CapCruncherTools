@@ -15,7 +15,7 @@ def get_viewpoint(
 ) -> pl.DataFrame:
     
 
-    with pl.StringCache(True):
+    with pl.StringCache():
 
         if not part:
             df = pl.scan_parquet(parquet, low_memory=scan_low_memory).filter(
