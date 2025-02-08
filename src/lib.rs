@@ -150,18 +150,18 @@ fn capcruncher_tools(m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
 
     // Create a submodule
-    let deduplicate = PyModule::new_bound(m.py(), "deduplicate")?;
+    let deduplicate = PyModule::new(m.py(), "deduplicate")?;
     deduplicate.add_function(wrap_pyfunction!(deduplicate_fastq_py, m)?)?;
     m.add_submodule(&deduplicate)?;
 
     // Create a submodule
-    let digest = PyModule::new_bound(m.py(), "digest")?;
+    let digest = PyModule::new(m.py(), "digest")?;
     digest.add_function(wrap_pyfunction!(digest_fasta_py, m)?)?;
     digest.add_function(wrap_pyfunction!(digest_fastq_py, m)?)?;
     m.add_submodule(&digest)?;
 
     // Create a submodule
-    let interactions = PyModule::new_bound(m.py(), "interactions")?;
+    let interactions = PyModule::new(m.py(), "interactions")?;
     interactions.add_function(wrap_pyfunction!(count_interactions, m)?)?;
     m.add_submodule(&interactions)?;
 
