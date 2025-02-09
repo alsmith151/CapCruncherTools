@@ -52,7 +52,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,7 +62,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --target x86_64-apple-darwin
+          args: --release --out dist
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -70,7 +70,7 @@ jobs:
           name: wheels-macos-${{ matrix.target }}
           path: dist
       - name: Install dependencies and test
-        if: matrix.target == 'x86_64'
+        if: matrix.target == 'x86_64-apple-darwin'
         shell: bash
         run: |
           set -e
