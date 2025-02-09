@@ -6,4 +6,5 @@ loguru
 ray>=2.7.0
 pyranges
 polars
-cooler<=0.9.3
+cooler<=0.10.3
+pandera
