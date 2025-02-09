@@ -1,7 +1,7 @@
 [project]
 authors = [{ name = "asmith" }, { email = "alastair.smith@ndcls.ox.ac.uk" }]
 name = "capcruncher-tools"
-version = "0.2.1"
+version = "0.2.4"
 description = "Extra utilities to enhance CapCruncher"
 readme = "README.md"
 requires-python = ">=3.8"
