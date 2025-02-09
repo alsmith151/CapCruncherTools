@@ -172,7 +172,7 @@ def count_interactions(
     import tqdm
     import pyranges as pr
 
-    import capcruncher.api.storage
+    from capcruncher.api import storage
     import capcruncher_tools.count
 
     # Extract viewpoint names and sizes from the supplied parquet file
@@ -275,6 +275,6 @@ def count_interactions(
                     pbar.update(1)
 
         logging.info(f"Making final cooler at {output}")
-        capcruncher.api.storage.merge_coolers(coolers, output=output)
+        storage.merge_coolers(coolers, output=output)
 
     return output

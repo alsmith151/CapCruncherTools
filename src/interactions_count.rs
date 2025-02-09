@@ -21,8 +21,8 @@ pub fn count(df: DataFrame) -> PyDataFrame {
         .into_iter()
         .map(|df| {
             let ser = &df
-                .select_series(["restriction_fragment"])
-                .expect("couldnt extract restriction_fragment column")[0];
+                .column("restriction_fragment")
+                .expect("couldnt extract restriction_fragment column");
 
             let mut rf_combs = HashMap::new();
             let rf = ser
@@ -54,21 +54,21 @@ pub fn count(df: DataFrame) -> PyDataFrame {
         );
 
     let df_counts = DataFrame::new(vec![
-        Series::new(
+        Column::new(
             "bin1_id".into(),
             interaction_counts
                 .keys()
                 .map(|(a, _)| *a)
                 .collect::<Vec<_>>(),
         ),
-        Series::new(
+        Column::new(
             "bin2_id".into(),
             interaction_counts
                 .keys()
                 .map(|(_, b)| *b)
                 .collect::<Vec<_>>(),
         ),
-        Series::new(
+        Column::new(
             "count".into(),
             interaction_counts.values().map(|v| *v).collect::<Vec<_>>(),
         ),

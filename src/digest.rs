@@ -12,6 +12,7 @@ use std::ops::Add;
 use std::{hash::Hash, thread};
 use strum::{Display, EnumString};
 use serde::{Serialize, Deserialize};
+use rand::rng;
 
 
 use crate::utils::{ReadType};
@@ -111,7 +112,7 @@ impl DigestibleRead<'_, bio::io::fastq::Record> {
             self.read.id(),
             self.read_type,
             slice_no,
-            thread_rng().gen_range(0..100)
+            rng().random_range(0..100)
         );
 
         let sequence = self.read.seq()[start..end].to_ascii_uppercase();

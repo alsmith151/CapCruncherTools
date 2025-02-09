@@ -5,14 +5,23 @@ use log::{debug, info, warn};
 use rand::prelude::*;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::hash::Hasher;
 use std::ops::Add;
 use std::path::Path;
 use std::prelude::rust_2021::*;
 use std::{iter::Iterator, str::FromStr};
 use tempfile::tempdir;
-use twox_hash::xxh3::hash64_with_seed;
+use twox_hash::XxHash64;
 
 use crate::utils::{get_fastq_reader_file_handles, get_fastq_writer_file_handles, write_records};
+
+
+fn hash64_with_seed(data: &[u8], seed: u64) -> u64 {
+    let hash = XxHash64::oneshot(seed, data);
+    hash
+}
+
+
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub struct FastqReadDeduplicationStats {
@@ -195,7 +204,7 @@ where {
 
         // Shuffle the order of the shards
         let mut shard_duplicates = if self.shuffle_shard_order {
-            let mut rng = thread_rng();
+            let mut rng = rand::rng();
             let mut shard_duplicates = shard_duplicates;
             shard_duplicates.shuffle(&mut rng);
             shard_duplicates

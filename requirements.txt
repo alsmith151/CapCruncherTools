@@ -5,6 +5,10 @@ tabulate
 loguru
 ray>=2.7.0
 pyranges
-polars
 cooler<=0.10.3
 pandera
+polars<=1.21.0
+cooler<=0.10.3
+ujson
+tqdm
+xxhash
