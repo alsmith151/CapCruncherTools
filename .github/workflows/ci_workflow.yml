@@ -44,7 +44,7 @@ jobs:
           pip install -r requirements.txt
           pip install git+https://github.com/sims-lab/CapCruncher.git@fix-polars-errors
           pip install pybedtools pysam ujson tqdm pyarrow --no-deps
-          pip install capcruncher-tools --find-links dist --force-reinstall --no-index
+          pip install dist/*.whl
           pip install pytest
           pytest
 
@@ -78,7 +78,7 @@ jobs:
           pip install -r requirements.txt
           pip install git+https://github.com/sims-lab/CapCruncher.git@fix-polars-errors
           pip install pybedtools pysam ujson tqdm pyarrow --no-deps
-          pip install capcruncher-tools --find-links dist --force-reinstall --no-index
+          pip install dist/*.whl
           pip install pytest
           pytest
 
