@@ -42,8 +42,9 @@ jobs:
           set -e
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install capcruncher pybedtools pysam ujson tqdm pyarrow --no-deps
-          pip install capcruncher-tools --find-links dist --force-reinstall --no-index
+          pip install git+https://github.com/sims-lab/CapCruncher.git@fix-polars-errors
+          pip install pybedtools pysam ujson tqdm pyarrow --no-deps
+          pip install dist/*.whl
           pip install pytest
           pytest
 
@@ -51,7 +52,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        target: [macOS-14, macOS-14-arm64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,7 +61,6 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          target: ${{ matrix.target }}
           args: --release --out dist
           sccache: 'true'
       - name: Upload wheels
@@ -69,14 +69,15 @@ jobs:
           name: wheels-macos-${{ matrix.target }}
           path: dist
       - name: Install dependencies and test
-        if: matrix.target == 'x86_64'
+        if: matrix.target == 'macOS-14-arm64'
         shell: bash
         run: |
           set -e
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install capcruncher pybedtools pysam ujson tqdm pyarrow --no-deps
-          pip install capcruncher-tools --find-links dist --force-reinstall --no-index
+          pip install git+https://github.com/sims-lab/CapCruncher.git@fix-polars-errors
+          pip install pybedtools pysam ujson tqdm pyarrow --no-deps
+          pip install dist/*.whl
           pip install pytest
           pytest
 
