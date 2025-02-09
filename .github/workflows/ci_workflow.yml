@@ -1,4 +1,4 @@
-name: CI-Workflow
+name: CI
 
 on:
   push:
@@ -18,10 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [x86_64, x86]
+        target: [x86_64]
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       - name: Build wheels
@@ -32,66 +32,48 @@ jobs:
           sccache: 'true'
           manylinux: 2014
       - name: Upload wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
-          path: dist/*.whl
-      - name: pytest
-        if: ${{ startsWith(matrix.target, 'x86_64') }}
+          name: wheels-linux-${{ matrix.target }}
+          path: dist
+      - name: Install dependencies and test
         shell: bash
         run: |
           set -e
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install git+https://github.com/sims-lab/CapCruncher.git@fix-polars-errors
           pip install pybedtools pysam ujson tqdm pyarrow --no-deps
           pip install dist/*.whl
           pip install pytest
           pytest
-      - name: pytest
-        if: ${{ !startsWith(matrix.target, 'x86') && matrix.target != 'ppc64' }}
-        uses: uraimo/run-on-arch-action@v2.5.0
-        with:
-          arch: ${{ matrix.target }}
-          distro: ubuntu22.04
-          githubToken: ${{ github.token }}
-          install: |
-            apt-get update
-            apt-get install -y --no-install-recommends python3 python3-pip
-            pip3 install -U pip pytest
-          run: |
-            set -e
-            pip install -r requirements.txt
-            pip install git+https://github.com/sims-lab/CapCruncher.git@fix-polars-errors
-            pip install pybedtools pysam ujson tqdm pyarrow --no-deps
-            pip install dist/*.whl
-            pytest
 
   macos:
     runs-on: macos-latest
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        target: [macOS-14, macOS-14-arm64]
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --compatibility macosx_11_0_x86_64 macosx_11_0_arm64
+          args: --release --out dist
           sccache: 'true'
       - name: Upload wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
-          path: dist/*.whl
-      - name: pytest
-        if: ${{ !startsWith(matrix.target, 'aarch64') }}
+          name: wheels-macos-${{ matrix.target }}
+          path: dist
+      - name: Install dependencies and test
+        if: matrix.target == 'macOS-14-arm64'
         shell: bash
         run: |
           set -e
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install git+https://github.com/sims-lab/CapCruncher.git@fix-polars-errors
           pip install pybedtools pysam ujson tqdm pyarrow --no-deps
@@ -102,17 +84,17 @@ jobs:
   sdist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist
       - name: Upload sdist
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
-          path: dist/*.tar.gz
+          name: wheels-src
+          path: dist
 
   release:
     name: Release
@@ -120,10 +102,17 @@ jobs:
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [linux, macos, sdist]
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: wheels
-          path: dist
+          pattern: wheels-*
+          path: artifacts
+          merge-multiple: true  # Ensures all artifacts are placed in a single directory
+
+      - name: Move all wheel files to dist
+        run: |
+          mkdir -p dist
+          find artifacts -type f -exec mv {} dist/ \;
+
       - name: Publish to PyPI
         uses: PyO3/maturin-action@v1
         env:
