@@ -3,7 +3,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Ok;
 use itertools::Itertools;
 use log::{debug, info, warn};
 use polars::prelude::*;
@@ -53,26 +52,29 @@ pub fn count(df: DataFrame) -> PyDataFrame {
             },
         );
 
-    let df_counts = DataFrame::new(vec![
-        Column::new(
-            "bin1_id".into(),
-            interaction_counts
-                .keys()
-                .map(|(a, _)| *a)
-                .collect::<Vec<_>>(),
-        ),
-        Column::new(
-            "bin2_id".into(),
-            interaction_counts
-                .keys()
-                .map(|(_, b)| *b)
-                .collect::<Vec<_>>(),
-        ),
-        Column::new(
-            "count".into(),
-            interaction_counts.values().map(|v| *v).collect::<Vec<_>>(),
-        ),
-    ])
+    let df_counts = DataFrame::new(
+        interaction_counts.len(),
+        vec![
+            Column::new(
+                "bin1_id".into(),
+                interaction_counts
+                    .keys()
+                    .map(|(a, _)| *a)
+                    .collect::<Vec<_>>(),
+            ),
+            Column::new(
+                "bin2_id".into(),
+                interaction_counts
+                    .keys()
+                    .map(|(_, b)| *b)
+                    .collect::<Vec<_>>(),
+            ),
+            Column::new(
+                "count".into(),
+                interaction_counts.values().map(|v| *v).collect::<Vec<_>>(),
+            ),
+        ],
+    )
     .expect("couldnt create dataframe");
 
     PyDataFrame(df_counts)

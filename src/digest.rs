@@ -1,4 +1,3 @@
-use anyhow::Ok;
 use bio::io;
 use bio::pattern_matching::bom::BOM;
 use crossbeam::channel;

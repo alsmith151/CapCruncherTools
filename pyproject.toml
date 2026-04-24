@@ -7,20 +7,20 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dependencies = [
-    "click>=8.0.0,<9.0.0",
-    "loguru<=0.7.2",
-    "pandas>=2.1.0,<3.0.0",
-    "polars>=1.6.0,<1.35.0",
-    "pyranges1",
-    "ray>=2.8.0",
-    "tabulate",
-    "tqdm<=4.65.0",
+    "click==8.3.3",
+    "loguru==0.7.3",
+    "pandas==3.0.2",
+    "polars==1.40.1",
+    "pyranges1==1.3.8",
+    "ray==2.55.1",
+    "tabulate==0.10.0",
+    "tqdm==4.67.3",
 ]
 
 
 [build-system]
 build-backend = "maturin"
-requires = ["maturin>=1.13.1,<2"]
+requires = ["maturin==1.13.1"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
@@ -37,9 +37,9 @@ capcruncher-tools = "capcruncher_tools.cli:cli"
 
 [dependency-groups]
 dev = [
-    "maturin>=1.13.1",
-    "pytest>=9.0.3",
-    "ruff>=0.15.11",
+    "maturin==1.13.1",
+    "pytest==9.0.3",
+    "ruff==0.15.11",
 ]
 
 
