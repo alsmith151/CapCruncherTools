@@ -260,12 +260,12 @@ def count(
 ):
     """Count interactions between restriction fragments in a supplied parquet file"""
 
-    import pyranges as pr
     import capcruncher.api.storage
     import random
     import string
     import tqdm
     import tabulate
+    import pyranges1 as pr
 
     df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
 
@@ -318,7 +318,7 @@ def count(
             )
         )
 
-    bins = pr.read_bed(fragment_map, as_df=True).rename(
+    bins = pr.read_bed(fragment_map).rename(
         columns={
             "Chromosome": "chrom",
             "Start": "start",

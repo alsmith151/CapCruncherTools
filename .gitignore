@@ -1,5 +1,7 @@
 target/*
 Cargo.lock
+.uv-cache/
+.venv/
 *.pyc
 *.abi3*
 .snakemake*
