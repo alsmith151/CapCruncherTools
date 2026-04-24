@@ -32,10 +32,11 @@ Refresh locked dependencies after editing `pyproject.toml`:
 uv lock --upgrade
 ```
 
-Direct Python, build, and development dependencies are pinned in
-`pyproject.toml`. Refresh them deliberately with `uv lock --upgrade` when you
-want to take a new dependency set. CapCruncher itself is expected to be supplied
-by the parent pipeline or CLI environment.
+Runtime dependency ranges are intentionally broad so `capcruncher-tools` can
+install inside CapCruncher pipeline environments without forcing shared
+libraries such as Click, pandas, or Polars to a single version. Build and
+development tools remain pinned for reproducible local builds. CapCruncher
+itself is expected to be supplied by the parent pipeline or CLI environment.
 
 ## Current Tools
 
