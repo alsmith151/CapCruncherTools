@@ -6,29 +6,29 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ahash = "0.8.12"
-anyhow = "1.0.102"
-bio = "3.0.0"
-crossbeam = "0.8.4"
-ctrlc = "3.5.2"
-fastq = "0.6.0"
-hashbrown = { version = "0.17.0", features = ["rayon"] }
-indicatif = { version = "0.18.4", features = ["rayon"] }
-itertools = "0.14.0"
-log = "0.4.29"
-niffler = "3.0.0"
-noodles = { version = "0.109.0", features = ["fasta", "bam"] }
-polars = { version = "0.53.0", features = ["lazy", "parquet", "partition_by"] }
-pyo3 = { version = "0.27.2", features = ["abi3-py37", "serde", "extension-module", "hashbrown"] }
-pyo3-log = "0.13.3"
-pyo3-polars = "0.26.0"
-pythonize = "0.27.0"
-rand = "0.10.1"
-rayon = "1.12.0"
-serde = { version = "1.0.228", features = ["derive"] }
-tempfile = "3.27.0"
-twox-hash = "2.1.2"
-strum = { version = "0.28.0", features = ["derive"] }
+ahash = "=0.8.12"
+anyhow = "=1.0.102"
+bio = "=3.0.0"
+crossbeam = "=0.8.4"
+ctrlc = "=3.5.2"
+fastq = "=0.6.0"
+hashbrown = { version = "=0.17.0", features = ["rayon"] }
+indicatif = { version = "=0.18.4", features = ["rayon"] }
+itertools = "=0.14.0"
+log = "=0.4.29"
+niffler = "=3.0.0"
+noodles = { version = "=0.109.0", features = ["fasta", "bam"] }
+polars = { version = "=0.53.0", features = ["lazy", "parquet", "partition_by"] }
+pyo3 = { version = "=0.27.2", features = ["abi3-py37", "serde", "extension-module", "hashbrown"] }
+pyo3-log = "=0.13.3"
+pyo3-polars = "=0.26.0"
+pythonize = "=0.27.0"
+rand = "=0.10.1"
+rayon = "=1.12.0"
+serde = { version = "=1.0.228", features = ["derive"] }
+tempfile = "=3.27.0"
+twox-hash = "=2.1.2"
+strum = { version = "=0.28.0", features = ["derive"] }
 
 
 [lib]
