@@ -1,0 +1,4 @@
+stat_type,stat,read_number,read_type,stage,sample
+read_pairs_total,1520,0,pe,deduplication,sampleX
+read_pairs_duplicated,538,0,pe,deduplication,sampleX
+read_pairs_unique,982,0,pe,deduplication,sampleX

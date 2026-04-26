@@ -170,7 +170,7 @@ def count_interactions(
 
     import ray
     import tqdm
-    import pyranges as pr
+    import pyranges1 as pr
 
     from capcruncher.api import storage
     import capcruncher_tools.count
@@ -210,7 +210,7 @@ def count_interactions(
     ray.init(num_cpus=n_cores, ignore_reinit_error=True)
 
     # Store a reference to the bins table in the object store
-    bins = pr.read_bed(fragment_map, as_df=True).rename(
+    bins = pr.read_bed(fragment_map).rename(
         columns={
             "Chromosome": "chrom",
             "Start": "start",
@@ -218,14 +218,8 @@ def count_interactions(
             "Name": "name",
         }
     )
-    # Note that fragment_map does not contain headers, so PyRanges's
-    # read_bed function cannot cast the Chromosome column implicitly
-    # into a category type as it normally would.
-    ## See: https://github.com/pyranges/pyranges/issues/375
-    #
-    # For now, we have to do this ourselves: casting first to string
-    # and then category.
-    ## See: https://github.com/sims-lab/CapCruncher/issues/234
+    # Keep the cooler bin schema stable after normalizing PyRanges BED column
+    # names to cooler's expected lowercase names.
     bins["chrom"] = bins["chrom"].astype("string").astype("category")
     bins_ref = ray.put(bins)
 

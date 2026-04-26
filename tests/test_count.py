@@ -2,7 +2,7 @@ import os
 import tempfile
 import shutil
 import pandas as pd
-import pyranges as pr
+import pyranges1 as pr
 from capcruncher_tools.count import count_interactions, make_cooler
 from capcruncher_tools.cli import cli
 import click.testing
