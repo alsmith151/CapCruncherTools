@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+from os import PathLike
 from pathlib import Path
 from typing import Literal, Sequence
 
@@ -23,8 +23,8 @@ class DigestFastqStats:
 
 
 def deduplicate_fastq(
-    fastq1: Sequence[str | os.PathLike[str]],
-    fastq2: Sequence[str | os.PathLike[str]],
+    fastq1: Sequence[str | PathLike[str]],
+    fastq2: Sequence[str | PathLike[str]],
     output_prefix: str = "deduplicated_",
     sample_name: str = "sample",
     shuffle: bool = False,
@@ -47,7 +47,9 @@ def deduplicate_fastq(
     if len(fastq1) != len(fastq2):
         raise ValueError("Number of FASTQ files in R1 and R2 must be equal")
 
-    fastq_in = [(os.fspath(f1), os.fspath(f2)) for f1, f2 in zip(fastq1, fastq2)]
+    fastq_in = [
+        (str(Path(f1)), str(Path(f2))) for f1, f2 in zip(fastq1, fastq2)
+    ]
 
     # Create output file names
     fastq_out = []
@@ -82,7 +84,7 @@ def deduplicate_fastq(
 
 
 def digest_fastq(
-    fastqs: Sequence[str | os.PathLike[str]] | None = None,
+    fastqs: Sequence[str | PathLike[str]] | None = None,
     output: str = "digested.fastq.gz",
     read_type: Literal["flashed", "pe"] = "pe",
     restriction_site: str = "dpnii",
@@ -104,8 +106,8 @@ def digest_fastq(
         DataFrame with digestion stats.
     """
     stats = digest.digest_fastq(
-        [os.fspath(fastq) for fastq in fastqs or []],
-        os.fspath(output),
+        [str(Path(fastq)) for fastq in fastqs or []],
+        str(Path(output)),
         restriction_site,
         read_type.capitalize(),
         sample_name,
@@ -115,8 +117,8 @@ def digest_fastq(
 
 
 def digest_genome(
-    fasta: str | os.PathLike[str],
-    output: str | os.PathLike[str] = "digested.bed",
+    fasta: str | PathLike[str],
+    output: str | PathLike[str] = "digested.bed",
     restriction_enzyme: str = "DpnII",
     remove_recognition_site: bool = True,
     minimum_slice_length: int = 18,
@@ -136,9 +138,9 @@ def digest_genome(
 
     logging.info("Digesting genome")
     digest.digest_fasta(
-        os.fspath(fasta),
+        str(Path(fasta)),
         restriction_enzyme,
-        os.fspath(output),
+        str(Path(output)),
         remove_recognition_site,
         minimum_slice_length,
         n_threads,

@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pytest
@@ -32,13 +31,13 @@ def test_fastq_duplicate_removal(
     df_stats = deduplicate_fastq(
         fastq1=[infiles_paths[0]],
         fastq2=[infiles_paths[1]],
-        output_prefix=os.fspath(out_prefix),
+        output_prefix=str(out_prefix),
     )
 
     # Check that the output files exist
     outfiles = [
-        Path(f"{out_prefix}{os.path.basename(infiles_paths[0])}"),
-        Path(f"{out_prefix}{os.path.basename(infiles_paths[1])}"),
+        Path(f"{out_prefix}{infiles_paths[0].name}"),
+        Path(f"{out_prefix}{infiles_paths[1].name}"),
     ]
     for fn in outfiles:
         assert fn.exists()
