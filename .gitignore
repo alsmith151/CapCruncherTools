@@ -1,2 +1,8 @@
 /target
 Cargo.lock
+*.pyc
+__pycache__/
+*.log
+*.tmp
+*.bak
+*.so
