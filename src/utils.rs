@@ -1,10 +1,6 @@
-use fastq::{each_zipped, Parser, Record};
-use log::{debug, info, warn};
-use std::iter::Iterator;
+use fastq::{Parser, Record};
 use std::path::Path;
 use std::prelude::rust_2021::*;
-
-
 
 pub fn get_fastq_reader_file_handles<P>(
     paths: Vec<P>,
@@ -29,7 +25,6 @@ pub fn get_fastq_writer_file_handles<P>(
 where
     P: AsRef<Path>,
 {
-
     let compression_level = match compression_level {
         Some(l) => l,
         None => niffler::Level::Five,

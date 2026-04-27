@@ -6,28 +6,28 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ahash = "0.8.2"
-anyhow = "*"
-bio = "1.2.0"
-crossbeam = "0.8.2"
-ctrlc = "*"
+ahash = "0.8"
+anyhow = "1"
+bio = "3.0.0"
+crossbeam = "0.8"
+ctrlc = "3"
 fastq = "0.6.0"
-hashbrown = {version = "*", features = ["rayon"]}
-indicatif = {version = "*", features = ["rayon"]}
-itertools = "0.10.5"
-log = "*"
-niffler = "2.3.2"
+hashbrown = { version = "0.17.0", features = ["rayon"] }
+indicatif = { version = "0.18", features = ["rayon"] }
+itertools = "0.14.0"
+log = "0.4"
+niffler = "3.0.0"
 noodles = { version = "0.20.0", features = ["fasta"] }
-polars = {version = "0.30.0", features = ["lazy", "parquet", "partition_by", "dtype-categorical"]}
-pyo3 = { version = "*", features = ["abi3-py37", "serde", "extension-module", "serde", "hashbrown"] }
-pyo3-log = "*"
-pyo3-polars="0.4.1"
-pythonize = "*"
-rand = "0.8.5"
-rayon = "*"
+polars = { version = "0.53", default-features = false, features = ["dtype-categorical"] }
+pyo3 = { version = "=0.27.0", features = ["abi3-py312", "serde", "extension-module", "hashbrown"] }
+pyo3-log = "0.13"
+pyo3-polars = "=0.26.0"
+pythonize = "=0.27.0"
+rand = "0.8"
+rayon = "1"
 serde = { version = "1.*", features = ["derive"] }
-tempfile = "3.3.0"
-twox-hash = "1.6.2"
+tempfile = "3"
+twox-hash = "1.6"
 
 
 [lib]

@@ -4,26 +4,19 @@
 
 A collection of Rust tools to speed up the python based functionality of the CapCruncher project. Python binding have been generated to allow for easy integration into the existing python code base. 
 
-## Current Tools
+## Current Accelerators
 
-### FASTQ deduplication - fastq-deduplicate:
+### FASTQ deduplication
 
 This tool takes paired FASTQ files and removes any duplicate fragments. 
 
-#### Basic Usage:
-
-```bash
-capcruncher-tools fastq-deduplicate -1 <input1.fastq> -2 <input2.fastq> -o <output_prefix>
-```
+Use it through the CapCruncher CLI or Python API; this package only provides the
+compiled acceleration layer.
 
 
-### Restriction digestion of FASTA - digest-genome:
+### Restriction digestion of FASTA
 
 This tool takes a FASTA file and a list of restriction enzymes and produces a list of fragments in BED format.
 
-#### Basic Usage:
-
-```bash
-capcruncher-tools digest-genome -i <input.fasta> -o <output.bed> -r <recognition site> -p  <number of threads>
-```
-
+Use it through the CapCruncher CLI or Python API; this package does not install a
+separate `capcruncher-tools` command.

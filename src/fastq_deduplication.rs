@@ -1,15 +1,12 @@
-use fastq::{each_zipped, Parser, Record};
-use hashbrown::{HashMap, HashSet};
-use indicatif::ParallelProgressIterator;
-use log::{debug, info, warn};
+use fastq::{each_zipped, Record};
+use hashbrown::HashSet;
+use log::info;
 use rand::prelude::*;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::iter::Iterator;
 use std::ops::Add;
-use std::path::Path;
 use std::prelude::rust_2021::*;
-use std::{iter::Iterator, str::FromStr};
-use tempfile::tempdir;
 use twox_hash::xxh3::hash64_with_seed;
 
 use crate::utils::{get_fastq_reader_file_handles, get_fastq_writer_file_handles, write_records};
@@ -41,31 +38,9 @@ impl FastqReadDeduplicationStats {
             read_pairs_unique: 0,
         }
     }
-
-    pub fn get_read_pairs_total(&self) -> u64 {
-        self.read_pairs_total
-    }
-
-    pub fn get_read_pairs_duplicated(&self) -> u64 {
-        self.read_pairs_duplicated
-    }
-
-    pub fn get_read_pairs_unique(&self) -> u64 {
-        self.read_pairs_unique
-    }
-
-    pub fn get_read_pairs_duplicated_percentage(&self) -> f64 {
-        self.read_pairs_duplicated as f64 / self.read_pairs_total as f64
-    }
-
-    pub fn get_read_pairs_unique_percentage(&self) -> f64 {
-        self.read_pairs_unique as f64 / self.read_pairs_total as f64
-    }
 }
 
 struct ShardDuplicates {
-    fq1: String,
-    fq2: String,
     shard_inner_duplicate_positions: Vec<usize>,
     shard_reads_seen: HashSet<u64>,
     shard_duplicate_read_hashes: HashSet<u64>,
@@ -74,7 +49,6 @@ struct ShardDuplicates {
 pub struct FastqDeduplicator {
     paths: Vec<(String, String)>,
     output_paths: Vec<(String, String)>,
-    duplicates: HashMap<(String, String), Vec<usize>>,
     shuffle_shard_order: bool,
     compress_output: bool,
 }
@@ -115,7 +89,6 @@ where {
         Self {
             paths,
             output_paths,
-            duplicates: HashMap::new(),
             shuffle_shard_order,
             compress_output,
         }
@@ -155,7 +128,6 @@ where {
                     file_handles.remove(0),
                     |r1, r2| match (r1, r2) {
                         (Some(rec1), Some(rec2)) => {
-
                             // Get the hash of the sequence
                             let sequences = [rec1.seq(), rec2.seq()].concat();
                             let sequences_hashed = hash64_with_seed(&sequences, 42);
@@ -177,8 +149,6 @@ where {
                 .expect("Error reading fq");
 
                 ShardDuplicates {
-                    fq1: r1.to_string(),
-                    fq2: r2.to_string(),
                     shard_inner_duplicate_positions: duplicate_read_positions,
                     shard_reads_seen: reads_seen,
                     shard_duplicate_read_hashes: HashSet::new(),
@@ -208,7 +178,7 @@ where {
         // Extend the reads_seen set with the current shard's reads
         let mut reads_seen = HashSet::new();
 
-        for mut shard in shard_duplicates.iter_mut() {
+        for shard in shard_duplicates.iter_mut() {
             let shard_reads_seen = &shard.shard_reads_seen;
 
             shard.shard_duplicate_read_hashes = shard_reads_seen
@@ -224,7 +194,7 @@ where {
 
     pub fn write_unique_reads(&mut self) -> Result<FastqReadDeduplicationStats, std::io::Error> {
         let shard_duplicates = self.unique_reads_identify()?;
-        
+
         info!("Writing unique reads");
         // Iterate over the paths in parallel using rayon par_iter
         let stats = self
@@ -331,9 +301,6 @@ mod tests {
         println!("deduplication:{:?}", deduplication_stats);
 
         // Check the number of unique reads
-        assert_eq!(
-            deduplication_stats.read_pairs_unique,
-            982,
-        );
+        assert_eq!(deduplication_stats.read_pairs_unique, 982,);
     }
 }

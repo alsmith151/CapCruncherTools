@@ -1,12 +1,7 @@
-use std::fs::File;
-use std::io::Read;
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use bio::io::bed;
 use bio::io::fasta;
 use bio::pattern_matching::bom::BOM;
-use log::{debug, error, info, warn};
+use log::warn;
 use std::prelude::rust_2021::*;
 
 struct DigestedFastaEntry<'a> {
@@ -100,7 +95,7 @@ pub fn digest_fasta(
     let (send_digested, recv_digested) = crossbeam::channel::unbounded();
 
     // Spawn a digestion thread
-    for i in 0..n_threads {
+    for _ in 0..n_threads {
         let send_digested = send_digested.clone();
         let recv_raw = recv_raw.clone();
         let restriction_site = restriction_site.clone();

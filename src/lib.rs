@@ -1,18 +1,18 @@
 use pyo3::prelude::*;
+use pyo3::types::PyModule;
 use pyo3_polars::PyDataFrame;
-use polars::prelude::*;
 use pythonize::pythonize;
 
-mod genome_digest;
-mod utils;
 mod fastq_deduplication;
+mod genome_digest;
 mod interactions_count;
+mod utils;
 
 // Rust based. Deduplicate FASTQ files based on exact sequence matches. Returns a dictionary with statistics."
 #[pyfunction]
 #[pyo3(
     name = "fastq_deduplicate",
-    text_signature = "(fq_in, fq_out, shuffle)",
+    text_signature = "(fq_in, fq_out, shuffle)"
 )]
 fn deduplicate_fastq_py(
     fq_in: Vec<(String, String)>,
@@ -26,17 +26,16 @@ fn deduplicate_fastq_py(
     // let gil = Python::acquire_gil();
     // let py = gil.python();
 
-    let mut deduplicator = fastq_deduplication::FastqDeduplicator::new(
-        fq_in,
-        fq_out,
-        shuffle,
-    );
+    let mut deduplicator = fastq_deduplication::FastqDeduplicator::new(fq_in, fq_out, shuffle);
 
     // Run the deduplication
-    let deduplication_results = deduplicator.write_unique_reads().expect("Error during deduplication");
+    let deduplication_results = deduplicator
+        .write_unique_reads()
+        .expect("Error during deduplication");
 
     // Convert statistics to Python
-    let py_deduplication_results = Python::with_gil(|py| pythonize(py, &deduplication_results).unwrap());
+    let py_deduplication_results =
+        Python::attach(|py| pythonize(py, &deduplication_results).unwrap().unbind());
     py_deduplication_results
 }
 
@@ -44,7 +43,7 @@ fn deduplicate_fastq_py(
 #[pyfunction]
 #[pyo3(
     name = "digest_fasta",
-    text_signature = "(fasta, restriction_site, output, remove_recognition_site, min_slice_length)",
+    text_signature = "(fasta, restriction_site, output, remove_recognition_site, min_slice_length)"
 )]
 fn digest_fasta_py(
     fasta: String,
@@ -71,41 +70,34 @@ fn digest_fasta_py(
 }
 
 #[pyfunction]
-#[pyo3(
-    name = "count_interactions",
-    text_signature = "(df: DataFrame)",
-)]
-fn count_interactions(df: PyDataFrame) -> PyDataFrame{
+#[pyo3(name = "count_interactions", text_signature = "(df: DataFrame)")]
+fn count_interactions(df: PyDataFrame) -> PyDataFrame {
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
     let df = interactions_count::count(df.into());
     df
 }
 
-
-
-
-
 #[pymodule]
+#[pyo3(gil_used = false)]
 #[pyo3(name = "capcruncher_tools")]
-fn capcruncher_tools(_py: Python, m: &PyModule) -> PyResult<()> {
-
+fn capcruncher_tools(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Initialize the logger
     pyo3_log::init();
 
     // Create a submodule
-    let deduplicate = PyModule::new(_py, "deduplicate")?;
-    deduplicate.add_function(wrap_pyfunction!(deduplicate_fastq_py, m)?)?;
-    m.add_submodule(deduplicate)?;
+    let deduplicate = PyModule::new(m.py(), "deduplicate")?;
+    deduplicate.add_function(wrap_pyfunction!(deduplicate_fastq_py, &deduplicate)?)?;
+    m.add_submodule(&deduplicate)?;
 
     // Create a submodule
-    let digest = PyModule::new(_py, "digest")?;
-    digest.add_function(wrap_pyfunction!(digest_fasta_py, m)?)?;
-    m.add_submodule(digest)?;
+    let digest = PyModule::new(m.py(), "digest")?;
+    digest.add_function(wrap_pyfunction!(digest_fasta_py, &digest)?)?;
+    m.add_submodule(&digest)?;
 
     // Create a submodule
-    let interactions = PyModule::new(_py, "interactions")?;
-    interactions.add_function(wrap_pyfunction!(count_interactions, m)?)?;
-    m.add_submodule(interactions)?;
-    
+    let interactions = PyModule::new(m.py(), "interactions")?;
+    interactions.add_function(wrap_pyfunction!(count_interactions, &interactions)?)?;
+    m.add_submodule(&interactions)?;
+
     Ok(())
 }
