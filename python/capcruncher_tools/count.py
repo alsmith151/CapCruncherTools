@@ -1,20 +1,18 @@
 import pathlib
-from typing import List, Literal, Tuple, Union
+
 import pandas as pd
 import polars as pl
-import ray
+
 
 def get_viewpoint(
     parquet: pathlib.Path,
     viewpoint: str,
-    part: Union[str, int] = None,
+    part: str | int | None = None,
     remove_exclusions: bool = False,
     remove_viewpoint: bool = False,
     subsample: float = 0,
     scan_low_memory: bool = False,
 ) -> pl.DataFrame:
-    
-
     with pl.StringCache():
 
         if not part:
@@ -43,20 +41,19 @@ def get_counts(df: pl.DataFrame, as_pandas: bool = True) -> pd.DataFrame:
 
     counts = interactions.count_interactions(df)
     if as_pandas:
-        counts = counts.to_pandas()
+        counts = pd.DataFrame(counts.to_dicts())
     return counts
 
 
-@ray.remote
-def count_interactions(
+def count_viewpoint_pixels(
     parquet: str,
     viewpoint: str,
     remove_exclusions: bool = False,
     remove_viewpoint: bool = False,
     subsample: float = 0,
     low_memory: bool = False,
-    partitions: List[str] = None,
-) -> Tuple[str, pd.DataFrame]:
+    partitions: list[str] | None = None,
+) -> tuple[str, pd.DataFrame]:
     from .count import get_counts, get_viewpoint
 
     if low_memory:
@@ -83,8 +80,8 @@ def count_interactions(
 
         # Combine counts
         counts = pl.concat(counts)
-        counts = counts.groupby(["bin1_id", "bin2_id"]).agg(pl.sum("count"))
-        counts = counts.to_pandas()
+        counts = counts.group_by(["bin1_id", "bin2_id"]).agg(pl.sum("count"))
+        counts = pd.DataFrame(counts.to_dicts())
 
     else:
         df = get_viewpoint(
@@ -98,27 +95,3 @@ def count_interactions(
         counts = get_counts(df)
 
     return (viewpoint, counts)
-
-
-@ray.remote
-def make_cooler(
-    output_prefix: str,
-    future: "ray.ObjectRef",
-    bins: pd.DataFrame,
-    viewpoint_path: str,
-    assay: Literal["capture", "tri", "tiled"],
-    **kwargs,
-) -> str:
-    viewpoint_name, counts = future
-
-    import capcruncher.api as cc
-
-    return cc.storage.create_cooler_cc(
-        output_prefix=output_prefix,
-        pixels=counts,
-        bins=bins,
-        viewpoint_name=viewpoint_name,
-        viewpoint_path=viewpoint_path,
-        assay=assay,
-        **kwargs,
-    )

@@ -1,20 +1,8 @@
-use bio::io;
 use bio::pattern_matching::bom::BOM;
-use crossbeam::channel;
-use indicatif::{ProgressBar, ProgressIterator};
-use log::{debug, info, warn};
-use polars::prelude::*;
-use rand::prelude::*;
-use rayon::prelude::*;
-use std::collections::HashMap;
-use std::ops::Add;
-use std::{hash::Hash, thread};
-use strum::{Display, EnumString};
-use serde::{Serialize, Deserialize};
 use rand::rng;
+use rand::RngExt;
 
-
-use crate::utils::{ReadType};
+use crate::utils::ReadType;
 
 pub struct DigestibleRead<'a, R> {
     read: &'a R,
@@ -26,7 +14,6 @@ pub struct DigestibleRead<'a, R> {
     pub n_slices_unfiltered: usize,
     pub n_slices_filtered: usize,
 }
-
 
 impl<'a, R> DigestibleRead<'a, R> {
     pub fn new(
@@ -75,11 +62,7 @@ impl DigestibleRead<'_, bio::io::fastq::Record> {
 
         let slice_indexes = self.digest_indicies();
         if slice_indexes.len() > 2 || self.allow_undigested {
-            for (i, (slice_start, slice_end)) in slice_indexes
-                .iter()
-                .zip(slice_indexes.iter().skip(1))
-                .enumerate()
-            {
+            for (slice_start, slice_end) in slice_indexes.iter().zip(slice_indexes.iter().skip(1)) {
                 let slice_start = match *slice_start {
                     0 => *slice_start,
                     _ => slice_start + self.restriction_site.len(),

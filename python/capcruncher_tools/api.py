@@ -1,18 +1,30 @@
-import os
-import pathlib
+from __future__ import annotations
 
-import tempfile
+import os
+from pathlib import Path
+from typing import Literal, Sequence
+
 import pandas as pd
-import polars as pl
-import tabulate
 from loguru import logger as logging
-from typing import Union, Tuple, List, Literal, Dict, Any
 
 from .capcruncher_tools import deduplicate, digest
 
+
+class DigestFastqStats:
+    """Small wrapper for Rust digestion stats returned to CapCruncher."""
+
+    def __init__(self, data):
+        self.data = data
+
+    def model_dump_json(self) -> str:
+        import json
+
+        return json.dumps(self.data)
+
+
 def deduplicate_fastq(
-    fastq1: List[str],
-    fastq2: List[str],
+    fastq1: Sequence[str | os.PathLike[str]],
+    fastq2: Sequence[str | os.PathLike[str]],
     output_prefix: str = "deduplicated_",
     sample_name: str = "sample",
     shuffle: bool = False,
@@ -35,17 +47,19 @@ def deduplicate_fastq(
     if len(fastq1) != len(fastq2):
         raise ValueError("Number of FASTQ files in R1 and R2 must be equal")
 
-    fastq_in = [(str(f1), str(f2)) for f1,f2 in zip(fastq1, fastq2)]
-        
+    fastq_in = [(os.fspath(f1), os.fspath(f2)) for f1, f2 in zip(fastq1, fastq2)]
+
     # Create output file names
     fastq_out = []
     for fqs in fastq_in:
         fq_pair = []
         for fq in fqs:
-            fq_name = pathlib.Path(fq).name
+            fq_name = Path(fq).name
             fq_pair.append(f"{output_prefix}{fq_name}")
         fastq_out.append(tuple(fq_pair))
-        
+
+    if fastq_out:
+        Path(fastq_out[0][0]).parent.mkdir(parents=True, exist_ok=True)
 
     logging.info("Deduplicating FASTQ files")
     deduplication_results = deduplicate.fastq_deduplicate(fastq_in, fastq_out, shuffle)
@@ -68,7 +82,7 @@ def deduplicate_fastq(
 
 
 def digest_fastq(
-    fastqs: List[str] = None,
+    fastqs: Sequence[str | os.PathLike[str]] | None = None,
     output: str = "digested.fastq.gz",
     read_type: Literal["flashed", "pe"] = "pe",
     restriction_site: str = "dpnii",
@@ -89,23 +103,20 @@ def digest_fastq(
     Returns:
         DataFrame with digestion stats.
     """
-    from capcruncher.api.statistics import DigestionStats
-
-       
-    
-    return DigestionStats(**digest.digest_fastq(
-        fastqs,
-        output,
+    stats = digest.digest_fastq(
+        [os.fspath(fastq) for fastq in fastqs or []],
+        os.fspath(output),
         restriction_site,
         read_type.capitalize(),
         sample_name,
         minimum_slice_length,
-    ))
+    )
+    return DigestFastqStats(stats)
 
 
 def digest_genome(
-    fasta: str,
-    output: str = "digested.bed",
+    fasta: str | os.PathLike[str],
+    output: str | os.PathLike[str] = "digested.bed",
     restriction_enzyme: str = "DpnII",
     remove_recognition_site: bool = True,
     minimum_slice_length: int = 18,
@@ -125,150 +136,10 @@ def digest_genome(
 
     logging.info("Digesting genome")
     digest.digest_fasta(
-        fasta,
+        os.fspath(fasta),
         restriction_enzyme,
-        output,
+        os.fspath(output),
         remove_recognition_site,
         minimum_slice_length,
         n_threads,
     )
-
-
-def count_interactions(
-    reporters: os.PathLike,
-    output: os.PathLike = "CC_cooler.hdf5",
-    remove_exclusions: bool = False,
-    remove_viewpoint: bool = False,
-    subsample: float = 0,
-    fragment_map: os.PathLike = None,
-    viewpoint_path: os.PathLike = None,
-    n_cores: int = 1,
-    assay: Literal["capture", "tri", "tiled"] = "capture",
-    **kwargs,
-) -> os.PathLike:
-    """
-    Counts interactions between the viewpoint and the rest of the genome.
-
-    Args:
-        reporters: Path to reporters file.
-        output: Output file name.
-        remove_exclusions: Remove excluded regions.
-        remove_viewpoint: Remove capture regions.
-        subsample: Subsample reads.
-        fragment_map: Path to fragment map.
-        viewpoint_path: Path to viewpoint file.
-        n_cores: Number of cores.
-        assay: Assay type.
-        **kwargs: Additional arguments.
-    Returns:
-        Path to the generated cooler file.
-
-    """
-
-    import random
-    import string
-
-    import ray
-    import tqdm
-    import pyranges1 as pr
-
-    from capcruncher.api import storage
-    import capcruncher_tools.count
-
-    # Extract viewpoint names and sizes from the supplied parquet file
-    logging.info("Extracting viewpoint names and sizes")
-
-    df = pd.read_parquet(reporters, engine="pyarrow", columns=["viewpoint"])
-    viewpoints = df["viewpoint"].cat.categories.to_list()
-    viewpoint_sizes = df["viewpoint"].value_counts()
-    viewpoint_sizes_dict = viewpoint_sizes.to_dict()
-    viewpoint_sizes_df = pd.DataFrame.from_dict(
-        viewpoint_sizes_dict, orient="index", columns=["n_slices"]
-    )
-    viewpoint_sizes_df_tab = tabulate.tabulate(
-        viewpoint_sizes_df, headers="keys", tablefmt="psql", showindex=True
-    )
-
-    logging.info(f"Number of viewpoints: {len(viewpoints)}")
-    logging.info(f"Number of slices per viewpoint:\n {viewpoint_sizes_df_tab}")
-
-    # Select a running mode
-    if any([vp for vp in viewpoint_sizes_dict.values() if vp > 2e6]):
-        logging.warning(
-            "High number of slices per viewpoint detected. Switching to low memory mode"
-        )
-        low_memory = True
-
-        # Extract the partitions used to generate the file
-        df = pd.read_parquet(reporters, engine="pyarrow", columns=["bam"])
-        partitions = df["bam"].cat.categories.to_list()
-
-    else:
-        low_memory = False
-
-    # Start a Ray cluster
-    ray.init(num_cpus=n_cores, ignore_reinit_error=True)
-
-    # Store a reference to the bins table in the object store
-    bins = pr.read_bed(fragment_map).rename(
-        columns={
-            "Chromosome": "chrom",
-            "Start": "start",
-            "End": "end",
-            "Name": "name",
-        }
-    )
-    # Keep the cooler bin schema stable after normalizing PyRanges BED column
-    # names to cooler's expected lowercase names.
-    bins["chrom"] = bins["chrom"].astype("string").astype("category")
-    bins_ref = ray.put(bins)
-
-    # Fix reporters path
-    reporters_path = pathlib.Path(reporters)
-    if reporters_path.is_dir():
-        reporters = str(reporters_path / "*.parquet")
-
-    # Create a list of count futures
-    futures = []
-    for viewpoint in viewpoints:
-        futures.append(
-            capcruncher_tools.count.count_interactions.remote(
-                parquet=f"{reporters}",
-                viewpoint=viewpoint,
-                remove_exclusions=remove_exclusions,
-                remove_viewpoint=remove_viewpoint,
-                subsample=subsample,
-                low_memory=low_memory,
-                partitions=partitions if low_memory else None,
-            )
-        )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cooler_refs = []
-        for count_future in futures:
-            cooler_refs.append(
-                capcruncher_tools.count.make_cooler.remote(
-                    output_prefix=str(
-                        pathlib.Path(tmpdir)
-                        / f"{''.join(random.choices(string.ascii_letters + string.digits, k=8))}.hdf5"
-                    ),
-                    future=count_future,
-                    bins=bins_ref,
-                    viewpoint_path=viewpoint_path,
-                    assay=assay,
-                )
-            )
-
-        with tqdm.tqdm(total=len(cooler_refs)) as pbar:
-            coolers = []
-            while cooler_refs:
-                coolers_completed, cooler_refs = ray.wait(cooler_refs)
-                for clr in coolers_completed:
-                    clr = ray.get(clr)
-                    coolers.append(clr.split("::")[0])
-                    pbar.update(1)
-
-        logging.info(f"Making final cooler at {output}")
-        storage.merge_coolers(coolers, output=output)
-
-    return output

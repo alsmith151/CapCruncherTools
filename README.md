@@ -38,36 +38,27 @@ libraries such as Click, pandas, or Polars to a single version. Build and
 development tools remain pinned for reproducible local builds. CapCruncher
 itself is expected to be supplied by the parent pipeline or CLI environment.
 
-## Current Tools
+## Current Accelerators
 
-### FASTQ deduplication - fastq-deduplicate:
+### FASTQ deduplication
 
 This tool takes paired FASTQ files and removes any duplicate fragments. 
 
-#### Basic Usage:
-
-```bash
-capcruncher-tools fastq-deduplicate -1 <input1.fastq> -2 <input2.fastq> -o <output_prefix>
-```
+Use it through the CapCruncher CLI or Python API; this package provides the
+compiled acceleration layer.
 
 
-### Restriction digestion of FASTA - digest-genome:
+### Restriction digestion of FASTA
 
 This tool takes a FASTA file and a list of restriction enzymes and produces a list of fragments in BED format.
 
-#### Basic Usage:
-
-```bash
-capcruncher-tools digest-genome -i <input.fasta> -o <output.bed> -r <recognition site> -p  <number of threads>
-```
+Use it through the CapCruncher CLI or Python API; this package does not install a
+separate `capcruncher-tools` command.
 
 
-### Count restriction fragments - count:
+### Count restriction fragments
 
 This tool counts the number of interactions between a fragment (in silico digested read).
 
-#### Basic Usage:
-
-```bash
-capcruncher-tools count <reporters> -f <fragments.bed> -v <viewpoints_path.bed> -o <output.hdf5> -p <number of threads>
-```
+Use it through CapCruncher's interaction-counting API; cooler creation and
+workflow orchestration live in CapCruncher.

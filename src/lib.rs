@@ -1,8 +1,7 @@
-
 use fastq_digest::ValidDigestionParams;
-use log::{debug, error, info, warn};
-use polars::prelude::*;
+use log::error;
 use pyo3::prelude::*;
+use pyo3::types::PyModule;
 use pyo3_polars::PyDataFrame;
 use pythonize::pythonize;
 use std::str::FromStr;
@@ -15,7 +14,7 @@ mod genome_digest;
 mod interactions_count;
 mod utils;
 
-use crate::utils::{ReadNumber, ReadType};
+use crate::utils::ReadType;
 
 // Rust based. Deduplicate FASTQ files based on exact sequence matches. Returns a dictionary with statistics."
 #[pyfunction]
@@ -31,8 +30,6 @@ fn deduplicate_fastq_py(
 ) -> Py<PyAny> {
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
-
-
     let mut deduplicator = fastq_deduplication::FastqDeduplicator::new(fq_in, fq_out, shuffle);
 
     // Run the deduplication
@@ -40,15 +37,7 @@ fn deduplicate_fastq_py(
         .write_unique_reads()
         .expect("Error during deduplication");
 
-    // // Convert statistics to Python
-    let py_deduplication_results = Python::with_gil(|py| {
-        
-        let obj = pythonize(py, &deduplication_results).unwrap();
-        obj.unbind()
-    });
-
-    py_deduplication_results
-
+    Python::attach(|py| pythonize(py, &deduplication_results).unwrap().unbind())
 }
 
 // Rust based. Digest a FASTA file with a restriction enzyme. Returns a BED file with the digested fragments.
@@ -78,7 +67,7 @@ fn digest_fasta_py(
         n_threads,
     )?;
 
-    Result::Ok(())
+    Ok(())
 }
 
 #[pyfunction]
@@ -96,8 +85,6 @@ fn digest_fastq_py(
 ) -> PyResult<Py<PyAny>> {
     // Set up ctrl-c handler
     ctrlc::set_handler(|| std::process::exit(2)).unwrap_or_default();
-
-
 
     let valid_params = ValidDigestionParams::validate(
         fastqs.len(),
@@ -123,12 +110,15 @@ fn digest_fastq_py(
     match res {
         Result::Ok(stats) => {
             // Convert statistics to Python
-            let py_stats = Python::with_gil(|py| pythonize(py, &stats).unwrap().unbind());
+            let py_stats = Python::attach(|py| pythonize(py, &stats).unwrap().unbind());
             std::result::Result::Ok(py_stats.into())
         }
         Err(e) => {
             error!("Error: {}", e);
-            std::result::Result::Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Error: {}", e)))
+            std::result::Result::Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Error: {}",
+                e
+            )))
         }
     }
 }
@@ -141,9 +131,8 @@ fn count_interactions(df: PyDataFrame) -> PyDataFrame {
     df
 }
 
-// #[pymodule]
-
 #[pymodule]
+#[pyo3(gil_used = false)]
 #[pyo3(name = "capcruncher_tools")]
 fn capcruncher_tools(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Initialize the logger
@@ -151,19 +140,19 @@ fn capcruncher_tools(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Create a submodule
     let deduplicate = PyModule::new(m.py(), "deduplicate")?;
-    deduplicate.add_function(wrap_pyfunction!(deduplicate_fastq_py, m)?)?;
+    deduplicate.add_function(wrap_pyfunction!(deduplicate_fastq_py, &deduplicate)?)?;
     m.add_submodule(&deduplicate)?;
 
     // Create a submodule
     let digest = PyModule::new(m.py(), "digest")?;
-    digest.add_function(wrap_pyfunction!(digest_fasta_py, m)?)?;
-    digest.add_function(wrap_pyfunction!(digest_fastq_py, m)?)?;
+    digest.add_function(wrap_pyfunction!(digest_fasta_py, &digest)?)?;
+    digest.add_function(wrap_pyfunction!(digest_fastq_py, &digest)?)?;
     m.add_submodule(&digest)?;
 
     // Create a submodule
     let interactions = PyModule::new(m.py(), "interactions")?;
-    interactions.add_function(wrap_pyfunction!(count_interactions, m)?)?;
+    interactions.add_function(wrap_pyfunction!(count_interactions, &interactions)?)?;
     m.add_submodule(&interactions)?;
 
-    Result::Ok(())
+    Ok(())
 }

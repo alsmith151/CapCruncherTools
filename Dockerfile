@@ -48,5 +48,4 @@ RUN apt-get update \
 
 COPY --from=builder /install /usr/local
 
-ENTRYPOINT ["capcruncher-tools"]
-CMD ["--help"]
+CMD ["python", "-c", "import capcruncher_tools; print('capcruncher-tools installed')"]
