@@ -1,15 +1,19 @@
-target/*
-Cargo.lock
+target/
+dist/
 .uv-cache/
 .venv/
-*.pyc
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
 *.abi3*
 .snakemake*
-duplicated*.fastq.gz
-diges*.fastq.gz
-.vscode
+*_deduplicated.fastq.gz
+/duplicated*.fastq.gz
+/digested*.fastq.gz
+/digest_output.fastq.gz
+.vscode/
 
 
 
-stats.digestion.csv
-test.fq.gz
+/stats.digestion.csv
+/test.fq.gz
