@@ -32,6 +32,12 @@ Refresh locked dependencies after editing `pyproject.toml`:
 uv lock --upgrade
 ```
 
+Release version bumps are managed by release-plz. After conventional commits
+land on the default branch, the release workflow opens or updates a release PR
+that bumps `Cargo.toml`, updates `Cargo.lock`, and maintains the changelog.
+Merge that PR, then create a `vX.Y.Z` GitHub release from the merged commit to
+publish the Python distributions.
+
 Runtime dependency ranges are intentionally broad so `capcruncher-tools` can
 install inside CapCruncher pipeline environments without forcing shared
 libraries such as Click, pandas, or Polars to a single version. Build and
