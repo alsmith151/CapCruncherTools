@@ -5,9 +5,6 @@
 // use std::collections::HashMap;
 // use std::prelude::rust_2021::*;
 
-
-
-
 // // CCAlignment = namedtuple(
 // //     "CCAlignment",
 // //     field_names=[
@@ -26,7 +23,6 @@
 // //         "coordinates",
 // //     ],
 // // )
-
 
 // pub struct CCAlignment {
 //     slice_id: u64,
@@ -177,11 +173,6 @@
 //                 )
 //             }
 //         };
-        
-        
-
-
-
 
 //         let mapped = record.is_unmapped();
 //         let multimapped = record.is_secondary();
@@ -207,7 +198,6 @@
 //     }
 // }
 
-
 // // def parse_alignment(aln: pysam.AlignmentFile) -> CCAlignment:
 // //     """Parses reads from a bam file into a list.
 
@@ -222,7 +212,6 @@
 // //      -start (e.g. 1000)
 // //      -end (e.g. 2000)
 // //      -coords e.g. (chr10:1000-2000)
-
 
 // //     Args:
 // //      aln: pysam.AlignmentFile.
@@ -270,7 +259,6 @@
 // //         end=int(ref_end),
 // //         coordinates=coords,
 // //     )
-
 
 // // @get_timing(task_name="processing BAM file")
 // // def parse_bam(bam: Union[str, pathlib.Path]) -> pd.DataFrame:

@@ -1,12 +1,8 @@
-use fastq::{each_zipped, Parser, Record};
-use log::{debug, info, warn};
-use std::iter::Iterator;
+use fastq::{Parser, Record};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::prelude::rust_2021::*;
 use strum::{Display, EnumString};
-use serde::{Serialize, Deserialize};
-
-
 
 pub fn get_fastq_reader_file_handles<P>(
     paths: Vec<P>,
@@ -23,9 +19,7 @@ where
     Ok(file_handles)
 }
 
-pub fn get_file_handles<P>(
-    paths: Vec<P>,
-) -> Result<Vec<Box<dyn std::io::Read>>, std::io::Error>
+pub fn get_file_handles<P>(paths: Vec<P>) -> Result<Vec<Box<dyn std::io::Read>>, std::io::Error>
 where
     P: AsRef<Path>,
 {
@@ -38,7 +32,6 @@ where
     Ok(file_handles)
 }
 
-
 pub fn get_fastq_writer_file_handles<P>(
     paths: Vec<P>,
     compression_format: niffler::compression::Format,
@@ -47,7 +40,6 @@ pub fn get_fastq_writer_file_handles<P>(
 where
     P: AsRef<Path>,
 {
-
     let compression_level = match compression_level {
         Some(l) => l,
         None => niffler::Level::Five,
@@ -81,18 +73,8 @@ where
     }
 }
 
-
 #[derive(Debug, Clone, EnumString, Display, PartialEq, Serialize, Deserialize)]
 pub enum ReadType {
     Flashed,
     Pe,
 }
-
-#[derive(Debug, Clone, EnumString, Display, PartialEq, Serialize, Deserialize)]
-pub enum ReadNumber {
-    One,
-    Two,
-}
-
-
-

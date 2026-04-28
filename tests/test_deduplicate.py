@@ -1,17 +1,13 @@
-import pytest
-import os
-import click.testing
-import pandas as pd
+from pathlib import Path
 
-from capcruncher_tools.cli import cli
+import pytest
+
+from capcruncher_tools.api import deduplicate_fastq
 
 
 @pytest.fixture(scope="module")
 def data_path():
-    fn = os.path.realpath(__file__)
-    dirname = os.path.dirname(fn)
-    data_dir = os.path.join(dirname, "fastq_deduplicate")
-    return data_dir
+    return Path(__file__).resolve().parent / "fastq_deduplicate"
 
 
 @pytest.mark.parametrize(
@@ -25,36 +21,29 @@ def data_path():
     ],
 )
 def test_fastq_duplicate_removal(
-    data_path, tmpdir, infiles, prefix, n_duplicates_expected
+    data_path, tmp_path, monkeypatch, infiles, prefix, n_duplicates_expected
 ):
+    monkeypatch.chdir(tmp_path)
 
-    infiles_paths = [os.path.join(data_path, fn) for fn in infiles]
-    out_prefix = os.path.join(tmpdir, prefix)
+    infiles_paths = [data_path / fn for fn in infiles]
+    out_prefix = tmp_path / prefix
 
-    result = click.testing.CliRunner().invoke(
-        cli,
-        [
-            "fastq-deduplicate",
-            "-1",
-            infiles_paths[0],
-            "-2",
-            infiles_paths[1],
-            "-o",
-            out_prefix,
-        ],
+    df_stats = deduplicate_fastq(
+        fastq1=[infiles_paths[0]],
+        fastq2=[infiles_paths[1]],
+        output_prefix=str(out_prefix),
     )
-    assert result.exit_code == 0
 
     # Check that the output files exist
     outfiles = [
-        out_prefix + os.path.basename(infiles_paths[0]),
-        out_prefix + os.path.basename(infiles_paths[1]),
+        Path(f"{out_prefix}{infiles_paths[0].name}"),
+        Path(f"{out_prefix}{infiles_paths[1].name}"),
     ]
     for fn in outfiles:
-        assert os.path.exists(fn)
+        assert fn.exists()
 
     # Check that the number of duplicates is as expected
-    stats_fn = "stats.csv"
-    df_stats = pd.read_csv(stats_fn)
-    n_duplicates = df_stats.query("stat_type == 'read_pairs_duplicated'").loc[:, "stat"].values[0]
+    n_duplicates = df_stats.query("stat_type == 'read_pairs_duplicated'").loc[
+        :, "stat"
+    ].values[0]
     assert n_duplicates == n_duplicates_expected

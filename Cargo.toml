@@ -1,6 +1,6 @@
 [package]
 name = "capcruncher_tools"
-version = "0.2.0"
+version = "0.2.5"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -18,7 +18,7 @@ itertools = "=0.14.0"
 log = "=0.4.29"
 niffler = "=3.0.0"
 noodles = { version = "=0.109.0", features = ["fasta", "bam"] }
-polars = { version = "=0.53.0", features = ["lazy", "parquet", "partition_by"] }
+polars = { version = "=0.53.0", default-features = false, features = ["dtype-categorical"] }
 pyo3 = { version = "=0.27.2", features = ["abi3-py37", "serde", "extension-module", "hashbrown"] }
 pyo3-log = "=0.13.3"
 pyo3-polars = "=0.26.0"

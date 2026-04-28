@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG PYTHON_VERSION=3.12
+ARG UV_VERSION=0.11.8
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
 
@@ -18,7 +19,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --profile minimal --default-toolchain stable \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh
+    && curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh
 
 WORKDIR /app
 
@@ -48,5 +49,4 @@ RUN apt-get update \
 
 COPY --from=builder /install /usr/local
 
-ENTRYPOINT ["capcruncher-tools"]
-CMD ["--help"]
+CMD ["python", "-c", "import capcruncher_tools; print('capcruncher-tools installed')"]

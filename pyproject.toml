@@ -1,20 +1,15 @@
 [project]
 authors = [{ name = "asmith" }, { email = "alastair.smith@ndcls.ox.ac.uk" }]
 name = "capcruncher-tools"
-version = "0.2.4"
 description = "Extra utilities to enhance CapCruncher"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
+dynamic = ["version"]
 dependencies = [
-    "click>=8.0.0,<9.0.0",
     "loguru>=0.7.0,<0.8.0",
     "pandas>=2.1.0,<3.0.0",
     "polars>=1.6.0,<2.0.0",
-    "pyranges1>=1.3.0,<2.0.0",
-    "ray>=2.8.0,<3.0.0",
-    "tabulate>=0.9.0,<1.0.0",
-    "tqdm>=4.65.0,<5.0.0",
 ]
 
 
@@ -31,9 +26,6 @@ compatibility = "linux"
 [package.metadata.maturin]
 name = "capcruncher_tools.capcruncher_tools_rs"
 
-
-[project.scripts]
-capcruncher-tools = "capcruncher_tools.cli:cli"
 
 [dependency-groups]
 dev = [

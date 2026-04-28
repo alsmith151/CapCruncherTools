@@ -1,20 +1,13 @@
 use bio::io;
-use bio::pattern_matching::bom::BOM;
 use crossbeam::channel;
-use indicatif::{ProgressBar, ProgressIterator};
-use log::{debug, error, info, warn};
-use polars::prelude::*;
-use rand::prelude::*;
-use rayon::prelude::*;
+use log::error;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::ops::Add;
-use std::{hash::Hash, thread};
 use strum::{Display, EnumString};
 
 use crate::digest::DigestibleRead;
-use crate::utils::{get_fastq_writer_file_handles, get_file_handles, ReadNumber, ReadType};
+use crate::utils::{get_fastq_writer_file_handles, get_file_handles, ReadType};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SliceNumberStats {

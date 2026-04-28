@@ -6,7 +6,7 @@ on:
       - main
       - master
     tags:
-      - '*'
+      - "v*"
   pull_request:
   workflow_dispatch:
 
@@ -42,7 +42,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: astral-sh/setup-uv@v5
         with:
+          version: "0.11.8"
           enable-cache: true
+      - name: Check release tag matches Cargo version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+
+          tag = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          with open("Cargo.toml", "rb") as handle:
+              cargo_version = tomllib.load(handle)["package"]["version"]
+
+          if tag != cargo_version:
+              raise SystemExit(
+                  f"Release tag v{tag} does not match Cargo.toml version {cargo_version}."
+              )
+          PY
       - name: Sync dependencies
         run: uv sync --dev
       - name: Build wheels
@@ -73,6 +90,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: astral-sh/setup-uv@v5
         with:
+          version: "0.11.8"
           enable-cache: true
       - name: Sync dependencies
         run: uv sync --dev
@@ -109,26 +127,21 @@ jobs:
           path: dist
 
   release:
-    name: Release
+    name: Publish to PyPI
     runs-on: ubuntu-latest
-    if: "startsWith(github.ref, 'refs/tags/')"
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [linux, macos, sdist]
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: wheels-*
-          path: artifacts
-          merge-multiple: true  # Ensures all artifacts are placed in a single directory
-
-      - name: Move all wheel files to dist
-        run: |
-          mkdir -p dist
-          find artifacts -type f -exec mv {} dist/ \;
-
-      - name: Publish to PyPI
-        uses: PyO3/maturin-action@v1
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          path: dist
+          merge-multiple: true
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          command: upload
-          args: --skip-existing dist/*
+          packages-dir: dist
