@@ -23,6 +23,28 @@ def test_count(data_path):
     assert not counts.empty
 
 
+def test_count_interactions_schema_contract_uses_unsigned_parent_ids():
+    df = pl.DataFrame(
+        {
+            "parent_id": [1, 1],
+            "restriction_fragment": [169686, 169744],
+        },
+        schema={
+            "parent_id": pl.UInt64,
+            "restriction_fragment": pl.Int64,
+        },
+    )
+
+    counts = interactions.count_interactions(df)
+
+    assert df.schema["parent_id"] == pl.UInt64
+    assert counts.schema == {
+        "bin1_id": pl.Int64,
+        "bin2_id": pl.Int64,
+        "count": pl.Int32,
+    }
+
+
 def test_count_interactions_preserves_unsigned_parent_ids_above_i64():
     df = pl.DataFrame(
         {
