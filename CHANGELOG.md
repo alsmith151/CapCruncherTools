@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6](https://github.com/alsmith151/CapCruncherTools/compare/v0.2.5...v0.2.6) - 2026-04-29
+
+### Other
+
+- Preserve unsigned parent IDs in count and document schema ([#30](https://github.com/alsmith151/CapCruncherTools/pull/30))
+
 ## [0.2.5](https://github.com/alsmith151/CapCruncherTools/compare/v0.2.0...v0.2.5) - 2026-04-28
 
 ### Other
