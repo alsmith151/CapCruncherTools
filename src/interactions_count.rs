@@ -8,20 +8,20 @@ pub fn count(df: DataFrame) -> PyDataFrame {
     let parent_ids = df
         .column("parent_id")
         .expect("couldnt extract parent_id column")
-        .cast(&DataType::Int64)
-        .expect("Failed to cast parent_id into i64");
+        .cast(&DataType::UInt64)
+        .expect("Failed to cast parent_id into u64");
     let restriction_fragments = df
         .column("restriction_fragment")
         .expect("couldnt extract restriction_fragment column")
         .cast(&DataType::Int64)
         .expect("Failed to cast restriction_fragment into i64");
 
-    let parent_ids = parent_ids.i64().expect("parent_id should be i64");
+    let parent_ids = parent_ids.u64().expect("parent_id should be u64");
     let restriction_fragments = restriction_fragments
         .i64()
         .expect("restriction_fragment should be i64");
 
-    let mut fragments_by_parent: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut fragments_by_parent: HashMap<u64, Vec<i64>> = HashMap::new();
     for (parent_id, restriction_fragment) in parent_ids
         .into_iter()
         .zip(restriction_fragments.into_iter())
