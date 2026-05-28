@@ -39,32 +39,36 @@ impl<'a> DigestedFastaEntry<'a> {
         slice_indexes.insert(0, 0);
         slice_indexes.push(self.sequence.len());
 
-        // Remove all slices that are smaller than the minimum slice size
-        if let Some(min_slice_size) = self.min_slice_size {
-            slice_indexes = slice_indexes
-                .into_iter()
-                .filter(|&x| x >= min_slice_size)
-                .collect();
-        }
-
         self.slices = slice_indexes;
     }
 
     fn to_bed_records(&mut self) -> Vec<bed::Record> {
         self.digest();
         let mut bed_records = Vec::with_capacity(self.slices.len());
+        let rsite_len = self.restriction_site.len();
 
         for (start, end) in self.slices.iter().zip(self.slices.iter().skip(1)) {
-            let mut bed_rec = bed::Record::new();
-            bed_rec.set_chrom(&self.name);
-
-            // Remove the recognition site from the slice if specified
-            if self.remove_recognition_site {
-                bed_rec.set_start((*start + self.restriction_site.len()) as u64);
+            let adjusted_start = if self.remove_recognition_site {
+                start + rsite_len
             } else {
-                bed_rec.set_start(*start as u64);
+                *start
+            };
+
+            // Skip zero-length or inverted fragments (adjacent/overlapping restriction sites)
+            if adjusted_start >= *end {
+                continue;
             }
 
+            // Filter by minimum slice length on actual fragment size
+            if let Some(min_size) = self.min_slice_size {
+                if end - adjusted_start < min_size {
+                    continue;
+                }
+            }
+
+            let mut bed_rec = bed::Record::new();
+            bed_rec.set_chrom(&self.name);
+            bed_rec.set_start(adjusted_start as u64);
             bed_rec.set_end(*end as u64);
             bed_records.push(bed_rec);
         }
@@ -160,6 +164,45 @@ pub fn digest_fasta(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_no_zero_length_fragments() {
+        // Adjacent restriction sites (GATCGATC) would produce a 0-length fragment
+        // between them when remove_recognition_site=true — must be filtered out.
+        let sequence = b"NNNNGATCGATCNNNN".to_vec();
+        let rsite = b"GATC";
+        let mut entry = DigestedFastaEntry::new(
+            "chr1".to_string(),
+            &sequence,
+            rsite,
+            true,
+            None,
+        );
+        let records = entry.to_bed_records();
+        for rec in &records {
+            assert!(rec.end() > rec.start(), "zero-length fragment: {:?}", rec);
+        }
+    }
+
+    #[test]
+    fn test_min_slice_length_filters_by_fragment_size() {
+        // Fragment between two sites: GATC + 3N + GATC → 3 bp after rsite removal.
+        // min_slice_size=5 should exclude it.
+        let sequence = b"NNNGATCNNNGATCNNN".to_vec();
+        let rsite = b"GATC";
+        let mut entry = DigestedFastaEntry::new(
+            "chr1".to_string(),
+            &sequence,
+            rsite,
+            true,
+            Some(5),
+        );
+        let records = entry.to_bed_records();
+        for rec in &records {
+            let len = rec.end() - rec.start();
+            assert!(len >= 5, "fragment shorter than min_slice_size: {}", len);
+        }
+    }
 
     #[test]
     fn test_digest_fasta() {
